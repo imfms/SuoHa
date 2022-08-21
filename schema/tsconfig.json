@@ -4,5 +4,8 @@
       "ES2015"
     ],
     "strictNullChecks": true
-  }
+  },
+  "include": [
+    "./"
+  ]
 }
