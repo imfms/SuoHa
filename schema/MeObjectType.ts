@@ -20,6 +20,6 @@ type ObjectShape = { [key: string]: MeTypeAny };
 
 export default class MeObjectType<Shape extends ObjectShape> extends MeType<baseObjectType<Shape>, Shape> {
     constructor(metadata: Shape) {
-        super("object", new MeRecordType({valueType: new MeAnyType()}), metadata);
+        super("object", new MeRecordType({valueType: new MeAnyType()}), metadata, new MeObjectType(metadata));
     }
 }

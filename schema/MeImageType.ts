@@ -1,12 +1,20 @@
 import MeType from "./MeType";
 import MeFileType from "./MeFileType";
 import MeVoidType from "./MeVoidType";
+import MeObjectType from "./MeObjectType";
 
-type ImageValue = {
-    file: MeFileType<{ type: "jpg" }>,
-}
-export default class MeImageType extends MeType<ImageValue> {
+const meImageTypeValueType = new MeObjectType({
+    file: new MeFileType<{ type: "jpg" }>({
+        type: "jpg",
+    }),
+})
+type MeImageTypeValue = typeof meImageTypeValueType["_type"]
+
+export default class MeImageType extends MeType<MeImageTypeValue> {
     constructor(metadata: void) {
-        super("file", new MeVoidType(), metadata);
+        super(
+            "file", new MeVoidType(), metadata,
+            new MeImageType()
+        );
     }
 }

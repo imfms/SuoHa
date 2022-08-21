@@ -1,19 +1,36 @@
 import MeType from "./MeType";
 import MeObjectType from "./MeObjectType";
 import {MeStringType} from "./MeStringType";
+import MeNumberType from "./MeNumberType";
+import MeRecordType from "./MeRecordType";
+import {isNil} from "./util";
+import MeLiteralType from "./MeLiteralType";
 
-export type MeFileTypeValue = {
-    name: string,
-    length: number, // TODO 自动生成类字段
-    mimeType: string,
-    type: string,
-    createTime: Date,
-    modifyTime: Date,
-    attrs: { [key: string]: string }, // todo auto map target type
-    contentBase64: string,
-}
-export default class MeFileType<Metadata extends { type: string } = { type: string }> extends MeType<MeFileTypeValue, Metadata> {
+const meMetadataType = new MeObjectType({
+    type: new MeStringType(),
+});
+export type MeFileTypeMetadata = typeof meMetadataType["_type"];
+
+const meFileTypeValueType = new MeObjectType({
+    name: new MeStringType(),
+    length: new MeNumberType(), // 自动生成类字段
+    mimeType: new MeStringType(),
+    type: new MeStringType(),
+    attrs: new MeRecordType({valueType: new MeStringType()}),
+    contentBase64: new MeStringType(),
+});
+export type MeFileTypeValue = typeof meFileTypeValueType["_type"];
+
+export default class MeFileType<Metadata extends MeFileTypeMetadata = MeFileTypeMetadata> extends MeType<MeFileTypeValue, Metadata> {
     constructor(metadata: Metadata) {
-        super("file", new MeObjectType({type: new MeStringType()}), metadata);
+        super(
+            "file", meMetadataType, metadata,
+            new MeObjectType({
+                ...meFileTypeValueType.metadata,
+                ...isNil(metadata.type) ? {} : {
+                    type: new MeLiteralType(metadata.type),
+                },
+            })
+        );
     }
 }
