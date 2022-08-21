@@ -5,4 +5,8 @@ export default class MeLiteralType<Value extends Primitive = Primitive> extends 
     constructor(metadata: Value) {
         super("literal", new MeLiteralType(metadata), metadata, new MeLiteralType(metadata));
     }
+
+    check(metadata: Value, value: Value): boolean {
+        return metadata === value;
+    }
 }

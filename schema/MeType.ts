@@ -27,9 +27,14 @@ export default abstract class MeType<Type, Metadata = void> {
         })
     }
 
-    check(value: Type): boolean {
-        return false
+    doCheck(metadata: Metadata, meType: MeType<Type, any>, value: Type) {
+        if (!meType.doCheck(meType.metadata, meType.meType, value)) {
+            return false;
+        }
+        return this.check(metadata, value)
     }
+
+    protected abstract check(metadata: Metadata, value: Type): boolean;
 }
 
 export type MeTypeAny = MeType<any, any>

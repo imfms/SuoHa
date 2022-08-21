@@ -17,4 +17,8 @@ export default class MeImageType extends MeType<MeImageTypeValue> {
             new MeImageType()
         );
     }
+
+    check(metadata: void, value: MeImageTypeValue): boolean {
+        return true;
+    }
 }

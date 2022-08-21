@@ -33,4 +33,8 @@ export default class MeFileType<Metadata extends MeFileTypeMetadata = MeFileType
             })
         );
     }
+
+    check(metadata: Metadata, value: MeFileTypeValue): boolean {
+        return true;
+    }
 }

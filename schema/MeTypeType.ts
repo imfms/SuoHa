@@ -5,4 +5,8 @@ export default class MeTypeType<Type extends MeTypeAny> extends MeType<Type, Typ
     constructor(metadata: Type) {
         super("type", new MeAnyType(), metadata, metadata);
     }
+
+    check(metadata: Type, value: Type): boolean {
+        return metadata.id === value.id;
+    }
 }
