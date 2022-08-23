@@ -1,6 +1,7 @@
 import React from 'react';
 import logo from './logo.svg';
 import './App.css';
+import MeVoidType from "./schema/MeVoidType";
 
 function App() {
   return (
@@ -22,5 +23,7 @@ function App() {
       </div>
   );
 }
+
+const meVoidType = new MeVoidType();
 
 export default App;
