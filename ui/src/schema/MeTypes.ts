@@ -9,16 +9,16 @@ export type MeValue<Type extends MeTypeAny> = {
 
 export abstract class MeType<Type, Metadata = void> {
     readonly _type!: Type;
-    readonly meType: MeType<Type, any> | undefined;
-    readonly metaDataMeType: () => MeTypeAny;
+    readonly valueType?: (metadata: any) => MeType<Type, any>;
+    readonly metaDataType: () => MeTypeAny;
     readonly metadata: Metadata;
     readonly id: string | number;
 
-    constructor(id: string | number, metadataType: () => MeTypeAny, metadata: Metadata, valueType?: MeType<Type, any>) {
+    constructor(id: string | number, metadataType: () => MeTypeAny, metadata: Metadata, valueType?: (metadata: Metadata) => MeType<Type, any>) {
         this.id = id;
         this.metadata = metadata;
-        this.metaDataMeType = metadataType;
-        this.meType = valueType;
+        this.metaDataType = metadataType;
+        this.valueType = valueType;
     }
 
     optional(): MeOptionalType<this> {
@@ -34,7 +34,7 @@ export abstract class MeType<Type, Metadata = void> {
     }
 
     doCheck(value: Type) {
-        if (!(this.meType?.check(this.metadata, value) ?? true)) {
+        if (!(this.valueType?.(this.metadata).doCheck(value) ?? true)) {
             return false;
         }
         return this.check(this.metadata, value)
@@ -132,7 +132,7 @@ export type MeOptionalTypeMetadataType<ValueType extends MeTypeAny> = { innerTyp
 
 export class MeOptionalType<Type extends MeTypeAny> extends MeType<MeOptionalTypeValueType<Type>, MeOptionalTypeMetadataType<Type>> {
     constructor(metadata: MeOptionalTypeMetadataType<Type>) {
-        super("optional", () => new MeObjectType({innerType: new MeAnyType()}), metadata, new MeUnionType([
+        super("optional", () => new MeObjectType({innerType: new MeAnyType()}), metadata, (metadata) => new MeUnionType([
             metadata.innerType, new MeNullType()
         ]));
     }
@@ -273,7 +273,7 @@ export type MeFileTypeValue = typeof meFileTypeValueType["_type"];
 
 export class MeFileType<Metadata extends MeFileTypeMetadata = MeFileTypeMetadata> extends MeType<MeFileTypeValue, Metadata> {
     constructor(metadata: Metadata) {
-        super("file", () => meMetadataType, metadata, new MeObjectType({
+        super("file", () => meMetadataType, metadata, (metadata) => new MeObjectType({
             ...meFileTypeValueType.metadata,
             ...isNil(metadata.type) ? {} : {
                 type: new MeLiteralType(metadata.type),
