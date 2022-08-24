@@ -1,4 +1,5 @@
 import {isNil, Primitive} from "./util";
+import {ComponentType} from "react";
 
 // # MeType
 export type MeTypeAny = MeType<any, any>
@@ -41,6 +42,8 @@ export abstract class MeType<Type, Metadata = void> {
     }
 
     protected abstract check(metadata: Metadata, value: Type): boolean;
+
+    abstract component(): ComponentType<{ metadata: Metadata, value: Type, setValue: (value: Type) => void }>;
 }
 
 // # MeNullType
