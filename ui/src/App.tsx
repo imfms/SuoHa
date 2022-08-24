@@ -1,7 +1,7 @@
 import React from 'react';
 import logo from './logo.svg';
 import './App.css';
-import MeVoidType from "./schema/MeVoidType";
+import {MeBooleanType, MeObjectType} from "./schema/MeTypes";
 
 function App() {
   return (
@@ -24,6 +24,8 @@ function App() {
   );
 }
 
-const meVoidType = new MeVoidType();
+console.log(new MeObjectType({
+    hi: new MeBooleanType(),
+}));
 
 export default App;
