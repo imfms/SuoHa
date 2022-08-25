@@ -43,8 +43,14 @@ export abstract class MeType<Type, Metadata = void> {
 
     protected abstract check(metadata: Metadata, value: Type): boolean;
 
-    abstract component(): ComponentType<{ metadata: Metadata, value: Type, setValue: (value: Type) => void }>;
+    abstract component(): ComponentType<{
+        metadata: Metadata,
+        value: Type, setValue: (value: Type) => void,
+        context: { getTypeComponent: MeTypeComponentGetter }
+    }>;
 }
+
+type MeTypeComponentGetter = (type: MeTypeAny["id"]) => ComponentType<{ metadata: any, value: any, setValue: (value: any) => void }>;
 
 // # MeNullType
 export class MeNullType extends MeType<null> {
