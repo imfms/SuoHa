@@ -1,31 +1,18 @@
 import React from 'react';
-import logo from './logo.svg';
 import './App.css';
-import {MeBooleanType, MeObjectType} from "./schema/MeTypes";
+import {MuiTheme} from "./theme/muiTheme";
+import {ThemeProvider} from "@mui/material";
+import {AdapterDateFns} from "@mui/x-date-pickers/AdapterDateFns";
+import {LocalizationProvider, zhCN} from "@mui/x-date-pickers";
 
 function App() {
-  return (
-      <div className="App">
-        <header className="App-header">
-          <img src={logo} className="App-logo" alt="logo"/>
-          <p>
-            Edit <code>src/App.tsx</code> and save to reload.
-          </p>
-          <a
-              className="App-link"
-              href="https://reactjs.org"
-              target="_blank"
-              rel="noopener noreferrer"
-          >
-            Learn React
-          </a>
-        </header>
-      </div>
-  );
-}
+    return (
+        <LocalizationProvider adapterLocale={zhCN} dateAdapter={AdapterDateFns}>
+            <ThemeProvider theme={MuiTheme}>
 
-console.log(new MeObjectType({
-    hi: new MeBooleanType(),
-}));
+            </ThemeProvider>
+        </LocalizationProvider>
+    );
+}
 
 export default App;
