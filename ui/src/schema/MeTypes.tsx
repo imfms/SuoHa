@@ -1,9 +1,10 @@
 import {isNil, Primitive} from "./util";
-import {ComponentType, useMemo} from "react";
-import {IconButton, Switch, TextField} from "@mui/material";
+import {ComponentType, useEffect, useMemo, useState} from "react";
+import {Button, ButtonGroup, IconButton, Switch, TextField} from "@mui/material";
 import Grid2 from "@mui/material/Unstable_Grid2";
 import HighlightOffIcon from '@mui/icons-material/HighlightOff';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import DownloadIcon from '@mui/icons-material/Download';
 import {isEmpty} from "lodash";
 
 // # MeType
@@ -477,6 +478,76 @@ export class MeUnionType<Types extends MeTypeAny[]> extends MeType<MeUnionTypeVa
     }
 }
 
+const MeComponentUnionType: MeTypeComponent<MeUnionType<MeTypeAny[]>, {values: any[], tempVariables: any[]}> = ({
+                                                                                metadata,
+                                                                                value,
+                                                                                tempVariable = {values: [], tempVariables: []},
+                                                                                setValue,
+                                                                                context
+                                                                            }) => {
+    const [index, setIndex] = useState(0);
+    const componentGetter = useMemo(
+        () => {
+            const lazyLoadComponents: MeTypeComponent<any, any>[] = []
+            return (index: number) => {
+                return lazyLoadComponents[index] ??= context.getTypeComponent(metadata[index].id);
+            }
+        },
+        metadata
+    )
+
+    useEffect(
+        () => {
+            const beforeValue = tempVariable.values[index];
+            const hasBeforeValue = beforeValue !== undefined;
+            if (hasBeforeValue) {
+                setValue(beforeValue, tempVariable)
+                value = beforeValue
+            }
+        },
+        [index]
+    )
+
+    const Component = useMemo(() => componentGetter(index), [index])
+
+
+    if (metadata.length === 1) {
+        return <Component
+            context={context} metadata={metadata[index]}
+            value={value} tempVariable={tempVariable.tempVariables[index]}
+            setValue={setValue}
+        />
+    }
+
+    return <Grid2 container direction={"column"}>
+        <Grid2>
+            <ButtonGroup>
+                {metadata.map((meType, index) => (
+                    <Button
+                        value={meType.id}
+                        onClick={() => setIndex(index)}
+                    />
+                ))}
+            </ButtonGroup>
+        </Grid2>
+        <Grid2>
+            <Component
+                context={context} metadata={metadata[index]}
+                value={value} tempVariable={tempVariable.tempVariables[index]}
+                setValue={(value, tempVariable) => {
+                    const newTempVariable = {
+                        values: [...tempVariable.values],
+                        tempVariables: [...tempVariable.tempVariables]
+                    };
+                    newTempVariable.values[index] = value;
+                    newTempVariable.tempVariables[index] = tempVariable;
+                    setValue(value, tempVariable)
+                }}
+            />
+        </Grid2>
+    </Grid2>
+}
+
 // # MeVoidType
 export class MeVoidType extends MeType<void> {
     constructor(metadata: void) {
@@ -498,9 +569,7 @@ const meFileTypeValueType = new MeObjectType({
     name: new MeStringType(),
     length: new MeNumberType(), // 自动生成类字段
     mimeType: new MeStringType(),
-    type: new MeStringType(),
-    attrs: new MeRecordType({valueType: new MeStringType()}),
-    contentBase64: new MeStringType(),
+    dataUrl: new MeStringType(),
 });
 export type MeFileTypeValue = typeof meFileTypeValueType["_type"];
 
@@ -519,6 +588,49 @@ export class MeFileType<Metadata extends MeFileTypeMetadata = MeFileTypeMetadata
     }
 }
 
+const MeComponentFileType: MeTypeComponent<MeFileType, File | null> = ({metadata, value, tempVariable, setValue}) => {
+    return <Grid2 container>
+        <Grid2>
+            <input
+                type="file" multiple={false}
+                value={tempVariable as any}
+                accept={isNil(metadata.type) ? "*/*" : `*.${metadata.type}`}
+                onChange={event => {
+                    const file = event.target.files?.[0];
+                    if (isNil(file)) {
+                        setValue(null, null);
+                        return
+                    }
+
+                    const reader = new FileReader();
+                    reader.readAsDataURL(file);
+                    reader.onload = ev => {
+                        const dataUrl = ev.target?.result;
+                        if (!isNil(dataUrl)) {
+                            setValue(
+                                {
+                                    name: file.name,
+                                    mimeType: file.type,
+                                    length: file.size,
+                                    dataUrl: dataUrl as string,
+                                },
+                                file
+                            )
+                        }
+                    }
+                }}
+            />
+        </Grid2>
+        {value && (
+            <Grid2>
+                <IconButton download href={value.dataUrl}>
+                    <DownloadIcon/>
+                </IconButton>
+            </Grid2>
+        )}
+    </Grid2>
+}
+
 // # MeImageType
 const meImageTypeValueType = new MeObjectType({
     file: new MeFileType<{ type: "jpg" }>({
@@ -535,6 +647,25 @@ export class MeImageType extends MeType<MeImageTypeValue> {
     check(metadata: void, value: MeImageTypeValue): boolean {
         return true;
     }
+}
+
+const MeComponentImageType: MeTypeComponent<MeImageType, File | null> = ({context, metadata, value, tempVariable, setValue}) => {
+    const FileComponent = useMemo(() => context.getTypeComponent("file"), []);
+
+    return <Grid2 container direction={"column"}>
+        <Grid2>
+            <FileComponent
+                context={context} metadata={{type: "jpg"}}
+                value={value?.file} tempVariable={tempVariable}
+                setValue={(value, tempVariable) => {
+                    setValue({file: value}, tempVariable)
+                }}
+            />
+        </Grid2>
+        {value && (
+            <img src={value.file.dataUrl} width={200} height={200}/>
+        )}
+    </Grid2>
 }
 
 // # MeAnyType
