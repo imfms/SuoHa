@@ -202,7 +202,7 @@ const MeComponentListType: MeTypeComponent<MeListType<MeTypeAny>, any[]> = ({
         [metadata.valueType.id]
     );
 
-    return <Grid2 container>
+    return <Grid2 container direction={"column"}>
         {(values ?? []).map((itemValue, itemIndex) => {
             return <Grid2 container>
                 <Grid2 xs>
@@ -597,7 +597,7 @@ const MeComponentFileType: MeTypeComponent<MeFileType, File | null> = ({metadata
         <Grid2>
             <input
                 type="file" multiple={false}
-                value={tempVariable as any}
+                // value={tempVariable as any}
                 accept={isNil(metadata.type) ? "*/*" : `*.${metadata.type}`}
                 onChange={event => {
                     const file = event.target.files?.[0];
@@ -666,7 +666,7 @@ const MeComponentImageType: MeTypeComponent<MeImageType, File | null> = ({contex
                 }}
             />
         </Grid2>
-        {value && (
+        {value && !isNil(value) && (
             <img src={value.file.dataUrl} width={200} height={200}/>
         )}
     </Grid2>
@@ -693,9 +693,9 @@ const types: MeTypeAny[] = [
         age: new MeNumberType(),
     }),
     new MeListType({
-        valueType: new MeAnyType(),
+        valueType: new MeStringType(), // TODO
     }),
-    new MeFileType({type: "*/*"}),
+    new MeFileType({type: "*"}),
     new MeImageType(),
 ]
 
