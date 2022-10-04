@@ -3,7 +3,7 @@ import React from "react";
 // noinspection ES6UnusedImports
 import {} from '@mui/lab/themeAugmentation';
 // noinspection ES6UnusedImports
-import {} from '@mui/x-date-pickers/themeAugmentation';
+// import {} from '@mui/x-date-pickers/themeAugmentation';
 
 export const MuiTheme = createTheme({
     palette: {
@@ -63,67 +63,67 @@ export const MuiTheme = createTheme({
                 },
             },
         },
-        MuiDatePicker: {
-            defaultProps: {
-                showToolbar: false,
-                inputFormat: "yyyy-MM-dd",
-                mask: "____-__-__",
-                // @ts-ignore
-                inputProps: {
-                    placeholder: "年-月-日",
-                },
-                cancelText: "取消",
-                clearText: "清空",
-                clearable: true,
-                okText: "选择",
-                DialogProps: {fullWidth: false},
-            }
-        },
-        MuiMobileDatePicker: {
-            defaultProps: {
-                showToolbar: false,
-                inputFormat: "yyyy-MM-dd",
-                cancelText: "取消",
-                clearText: "清空",
-                clearable: true,
-                okText: "选择",
-                DialogProps: {fullWidth: false},
-            }
-        },
-        MuiMobileDateTimePicker: {
-            defaultProps: {
-                showToolbar: false,
-                inputFormat: "yyyy-MM-dd HH:mm:ss",
-                ampm: false,
-                cancelText: "取消",
-                clearText: "清空",
-                clearable: true,
-                okText: "选择",
-                DialogProps: {fullWidth: false},
-            }
-        },
-        MuiStaticTimePicker: {
-            defaultProps: {
-                showToolbar: false,
-                ampm: false,
-                cancelText: "取消",
-                clearText: "清空",
-                clearable: true,
-                okText: "选择",
-            }
-        },
-        MuiMobileTimePicker: {
-            defaultProps: {
-                showToolbar: false,
-                inputFormat: "HH:mm:ss",
-                ampm: false,
-                cancelText: "取消",
-                clearText: "清空",
-                clearable: true,
-                okText: "选择",
-                DialogProps: {fullWidth: false},
-            }
-        },
+        // MuiDatePicker: {
+        //     defaultProps: {
+        //         showToolbar: false,
+        //         inputFormat: "yyyy-MM-dd",
+        //         mask: "____-__-__",
+        //         // @ts-ignore
+        //         inputProps: {
+        //             placeholder: "年-月-日",
+        //         },
+        //         cancelText: "取消",
+        //         clearText: "清空",
+        //         clearable: true,
+        //         okText: "选择",
+        //         DialogProps: {fullWidth: false},
+        //     }
+        // },
+        // MuiMobileDatePicker: {
+        //     defaultProps: {
+        //         showToolbar: false,
+        //         inputFormat: "yyyy-MM-dd",
+        //         cancelText: "取消",
+        //         clearText: "清空",
+        //         clearable: true,
+        //         okText: "选择",
+        //         DialogProps: {fullWidth: false},
+        //     }
+        // },
+        // MuiMobileDateTimePicker: {
+        //     defaultProps: {
+        //         showToolbar: false,
+        //         inputFormat: "yyyy-MM-dd HH:mm:ss",
+        //         ampm: false,
+        //         cancelText: "取消",
+        //         clearText: "清空",
+        //         clearable: true,
+        //         okText: "选择",
+        //         DialogProps: {fullWidth: false},
+        //     }
+        // },
+        // MuiStaticTimePicker: {
+        //     defaultProps: {
+        //         showToolbar: false,
+        //         ampm: false,
+        //         cancelText: "取消",
+        //         clearText: "清空",
+        //         clearable: true,
+        //         okText: "选择",
+        //     }
+        // },
+        // MuiMobileTimePicker: {
+        //     defaultProps: {
+        //         showToolbar: false,
+        //         inputFormat: "HH:mm:ss",
+        //         ampm: false,
+        //         cancelText: "取消",
+        //         clearText: "清空",
+        //         clearable: true,
+        //         okText: "选择",
+        //         DialogProps: {fullWidth: false},
+        //     }
+        // },
         MuiTable: {
             defaultProps: {
                 sx: {
@@ -131,11 +131,11 @@ export const MuiTheme = createTheme({
                 }
             },
         },
-        MuiMasonry: {
-            defaultProps: {
-                sx: {}
-            }
-        },
+        // MuiMasonry: {
+        //     defaultProps: {
+        //         sx: {}
+        //     }
+        // },
         MuiMenu: {
             defaultProps: {
                 anchorOrigin: {vertical: "bottom", horizontal: "center"},
