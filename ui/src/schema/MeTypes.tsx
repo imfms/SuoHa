@@ -1,5 +1,5 @@
-import {isNil, Primitive} from "./util";
-import {ComponentType, useMemo, useRef, useState} from "react";
+import {isNil, isNull, Primitive} from "./util";
+import {ComponentType, useMemo, useRef} from "react";
 import {IconButton, Switch, TextField, ToggleButton, ToggleButtonGroup} from "@mui/material";
 import Grid2 from "@mui/material/Unstable_Grid2";
 import HighlightOffIcon from '@mui/icons-material/HighlightOff';
@@ -17,7 +17,7 @@ export type MeValue<Type extends MeTypeAny> = {
 export abstract class MeType<Type, Metadata = void> {
     readonly _type!: Type;
     readonly valueType?: (metadata: any) => MeType<Type, any>;
-    readonly metaDataType: () => MeTypeAny;
+    readonly metaDataType: () => MeType<Metadata>;
     readonly metadata: Metadata;
     readonly id: string | number;
 
@@ -54,15 +54,28 @@ export abstract class MeType<Type, Metadata = void> {
 type MeTypeComponentGetter = (type: MeTypeAny["id"]) => MeTypeComponent<MeTypeAny, any>
 type MeTypeComponentContext = { getTypeComponent: MeTypeComponentGetter }
 
-type MeTypeComponent<MeType extends MeTypeAny, TempVarType = void> = ComponentType<{
+type MeTypeComponent<MeType extends MeTypeAny, TempVarType = void, ValueType = MeType["_type"]> = ComponentType<{
     metadata: MeType["metadata"],
-    value: MeType["_type"] | null, tempVariable?: TempVarType
-    setValue: (value: MeType["_type"] | null, tempVariable?: TempVarType) => void,
+    value: ValueType | null, tempVariable?: TempVarType
+    setValue: (value: ValueType | null, tempVariable?: TempVarType) => void,
     context: MeTypeComponentContext,
 }>
 
+// # MeAnyType
+export class MeAnyType extends MeType<any> {
+    static readonly BASE_TYPE = new MeAnyType()
+    constructor() {
+        super("any", () => new MeVoidType());
+    }
+
+    check(metadata: void, value: any): boolean {
+        return true;
+    }
+}
+
 // # MeNullType
 export class MeNullType extends MeType<null> {
+    static readonly BASE_TYPE = new MeNullType()
     constructor() {
         super("null", () => new MeVoidType(), undefined);
     }
@@ -72,8 +85,11 @@ export class MeNullType extends MeType<null> {
     }
 }
 
+const MeComponentNullType: MeTypeComponent<MeNullType> = () => <></>
+
 // # MeBooleanType
 export class MeBooleanType extends MeType<boolean> {
+    static readonly BASE_TYPE = new MeBooleanType()
     constructor() {
         super("boolean", () => new MeVoidType(), undefined);
     }
@@ -92,6 +108,7 @@ const MeComponentBooleanType: MeTypeComponent<MeBooleanType> = ({metadata, value
 
 // # MeNumberType
 export class MeNumberType extends MeType<number> {
+    static readonly BASE_TYPE = new MeNumberType()
     constructor() {
         super("number", () => new MeVoidType(), undefined);
     }
@@ -119,6 +136,7 @@ const MeComponentNumberType: MeTypeComponent<MeNumberType, string> = ({metadata,
 
 // # MeStringType
 export class MeStringType<Metadata extends void = void> extends MeType<string> {
+    static readonly BASE_TYPE = new MeStringType()
     constructor(metadata: void) {
         super("string", () => new MeVoidType(), metadata);
     }
@@ -139,6 +157,7 @@ const MeComponentStringType: MeTypeComponent<MeStringType> = ({metadata, value, 
 
 // # MeLiteralType
 export class MeLiteralType<Value extends Primitive = Primitive> extends MeType<Value, Value> {
+    static readonly BASE_TYPE = new MeLiteralType(0)
     constructor(metadata: Value) {
         super("literal", () => new MeUnionType([
             {name: "数值", type: new MeNumberType()}, {name: "文本", type: new MeStringType()}, {name: "开关", type: new MeBooleanType()}
@@ -171,8 +190,9 @@ export type MeListTypeValueType<Type extends MeTypeAny> = Type["_type"][]
 export type MeListTypeMetadataType<Type extends MeTypeAny> = { valueType: Type }
 
 export class MeListType<Type extends MeTypeAny> extends MeType<MeListTypeValueType<Type>, MeListTypeMetadataType<Type>> {
+    static readonly BASE_TYPE = new MeListType({valueType: new MeNullType()})
     constructor(metadata: MeListTypeMetadataType<Type>) {
-        super("list", () => new MeObjectType({valueType: new MeAnyType()}), metadata);
+        super("list", () => new MeObjectType({valueType: new MeTypeType(new MeAnyType())}), metadata);
     }
 
     check(metadata: MeListTypeMetadataType<Type>, values: MeListTypeValueType<Type>): boolean {
@@ -210,7 +230,7 @@ const MeComponentListType: MeTypeComponent<MeListType<MeTypeAny>, any[]> = ({
                         context={context}
                         metadata={metadata.valueType.metadata}
                         value={itemValue}
-                        tempVariable={tempVariables?.[itemIndex] ?? null}
+                        tempVariable={tempVariables?.[itemIndex] ?? undefined}
                         setValue={(newItemValue, newItemTempVariable) => {
                             setValues(
                                 (values ?? []).map((itemValue, index) => index !== itemIndex ? itemValue : newItemValue),
@@ -250,6 +270,7 @@ export type MeOptionalTypeValueType<ValueType extends MeTypeAny> = ValueType["_t
 export type MeOptionalTypeMetadataType<ValueType extends MeTypeAny> = { innerType: ValueType }
 
 export class MeOptionalType<Type extends MeTypeAny> extends MeType<MeOptionalTypeValueType<Type>, MeOptionalTypeMetadataType<Type>> {
+    static readonly BASE_TYPE = new MeOptionalType({innerType: new MeStringType()});
     constructor(metadata: MeOptionalTypeMetadataType<Type>) {
         super("optional", () => new MeObjectType({innerType: new MeAnyType()}), metadata, (metadata) => new MeUnionType([
             {name: String(metadata.innerType.id), /*TODO*/ type: metadata.innerType}, {name: "空值", type: new MeNullType()}
@@ -273,7 +294,7 @@ export type MeRecordTypeMetadataType<ValueType extends MeTypeAny> = {
 }
 
 export class MeRecordType<ValueType extends MeTypeAny> extends MeType<MeRecordTypeValueType<ValueType>, MeRecordTypeMetadataType<ValueType>> {
-
+    static readonly BASE_TYPE = new MeRecordType({valueType: new MeStringType()})
     constructor(metadata: MeRecordTypeMetadataType<ValueType>) {
         super("record", () => new MeObjectType({valueType: new MeAnyType()}), metadata);
     }
@@ -307,7 +328,7 @@ const MeComponentRecordType: MeTypeComponent<MeRecordType<MeTypeAny>, { [key: st
         [metadata.valueType.id]
     );
 
-    return <Grid2 container>
+    return <Grid2 container direction={"column"}>
         {Object.entries(values ?? {}).map(([itemIndex, itemValue]) => {
             return <Grid2 container>
                 <Grid2 xs={"auto"}>
@@ -318,7 +339,7 @@ const MeComponentRecordType: MeTypeComponent<MeRecordType<MeTypeAny>, { [key: st
                         context={context}
                         metadata={metadata.valueType.metadata}
                         value={itemValue}
-                        tempVariable={tempVariables?.[itemIndex] ?? null}
+                        tempVariable={tempVariables?.[itemIndex] ?? undefined}
                         setValue={(newItemValue, newItemTempVariable) => {
                             const newValues = {...values};
                             newValues[itemIndex] = newItemValue;
@@ -384,8 +405,9 @@ export type baseObjectType<Shape extends ObjectShape> = flatten<addQuestionMarks
 type ObjectShape = { [key: string]: MeTypeAny };
 
 export class MeObjectType<Shape extends ObjectShape> extends MeType<baseObjectType<Shape>, Shape> {
+    static readonly BASE_TYPE = new MeObjectType({})
     constructor(metadata: Shape) {
-        super("object", () => new MeRecordType({valueType: new MeAnyType()}), metadata);
+        super("object", () => new MeRecordType({valueType: new MeTypeType(new MeAnyType())}), metadata);
     }
 
     check(shape: Shape, objectValue: baseObjectType<Shape>): boolean {
@@ -432,7 +454,7 @@ const MeComponentObjectType: MeTypeComponent<MeObjectType<{ [key: string]: MeTyp
                         context={context}
                         metadata={valueType.metadata}
                         value={objectValue?.[valueKey] ?? null}
-                        tempVariable={objectTempVariable?.[valueKey] ?? null}
+                        tempVariable={objectTempVariable?.[valueKey] ?? undefined}
                         setValue={(newValue, newTempVariable) => {
                             const newObjectValue = {
                                 ...objectValue,
@@ -453,6 +475,7 @@ const MeComponentObjectType: MeTypeComponent<MeObjectType<{ [key: string]: MeTyp
 
 // # MeTypeType
 export class MeTypeType<Type extends MeTypeAny> extends MeType<Type, Type> {
+    static readonly BASE_TYPE = new MeAnyType()
     constructor(metadata: Type) {
         super("type", () => new MeAnyType(), metadata);
     }
@@ -462,11 +485,81 @@ export class MeTypeType<Type extends MeTypeAny> extends MeType<Type, Type> {
     }
 }
 
+const MeComponentTypeType: MeTypeComponent<MeTypeType<MeTypeAny>, { values: any[], tempVariables: any[] }>
+    = ({
+           metadata,
+           context,
+           value, tempVariable, setValue,
+       }) => {
+
+    const types = [
+        {
+            name: "文本",
+            type: MeStringType.BASE_TYPE,
+        },
+        {
+            name: "数值",
+            type: MeNumberType.BASE_TYPE,
+        },
+        {
+            name: "开关",
+            type: MeBooleanType.BASE_TYPE,
+        },
+        {
+            name: "对象",
+            type: MeObjectType.BASE_TYPE,
+        },
+        {
+            name: "列表",
+            type: MeListType.BASE_TYPE,
+        },
+        {
+            name: "文件",
+            type: MeFileType.BASE_TYPE,
+        },
+        {
+            name: "图像",
+            type: MeImageType.BASE_TYPE,
+        },
+    ]
+
+    const typeMetadatas = types.map(type => ({
+        name: type.name,
+        type: type.type.metaDataType(),
+    }));
+
+    let value1 = (value === null || value === undefined) ? null : {
+        index: types.findIndex(type => type.type.id === value.id),
+        value: value.metadata
+    };
+    return <MeComponentUnionType
+        context={context} metadata={typeMetadatas}
+        value={value1}
+        tempVariable={tempVariable}
+        setValue={(newValue, newTempVariable) => {
+            if (isNull(newValue)) {
+                setValue(null, newTempVariable);
+            } else {
+                const {index, value: metadata} = newValue;
+                setValue(
+                    // @ts-ignore
+                    {
+                        id: types[index].type.id,
+                        metadata: metadata,
+                    },
+                    newTempVariable
+                )
+            }
+        }}
+    />
+}
+
 // # MeUnionType
 export type MeUnionTypeValueType<Types extends {name: string, type: MeTypeAny}[]> = Types[number]["type"]["_type"]
 export type MeUnionTypeMetadataType<Types extends {name: string, type: MeTypeAny}[]> = Types
 
 export class MeUnionType<Types extends {name: string, type: MeTypeAny}[]> extends MeType<MeUnionTypeValueType<Types>, MeUnionTypeMetadataType<Types>> {
+    static readonly BASE_TYPE = new MeUnionType([])
     constructor(metadata: Types) {
         super("union", () => new MeListType({valueType: new MeAnyType()}), metadata);
     }
@@ -481,7 +574,7 @@ export class MeUnionType<Types extends {name: string, type: MeTypeAny}[]> extend
     }
 }
 
-const MeComponentUnionType: MeTypeComponent<MeUnionType<{name: string, type: MeTypeAny}[]>, { values: any[], tempVariables: any[] }>
+const MeComponentUnionType: MeTypeComponent<MeUnionType<{name: string, type: MeTypeAny}[]>, { values: any[], tempVariables: any[] }, {index: number, value: any}>
     = ({
            metadata: metadata,
            value,
@@ -493,7 +586,6 @@ const MeComponentUnionType: MeTypeComponent<MeUnionType<{name: string, type: MeT
            context
        }) => {
 
-    const [index, setIndex] = useState(0);
     const componentGetter = useMemo(
         () => {
             const lazyLoadComponents: MeTypeComponent<any, any>[] = []
@@ -504,12 +596,14 @@ const MeComponentUnionType: MeTypeComponent<MeUnionType<{name: string, type: MeT
         metadata
     )
 
-    const Component = useMemo(() => componentGetter(index), [index])
+    const index = value?.index ?? null
+
+    const Component = useMemo(() => index === null ? () => <></> : componentGetter(index), [index])
 
     if (metadata.length === 1) {
         return <Component
-            context={context} metadata={metadata[index].type.metadata}
-            value={value} tempVariable={tempVariable.tempVariables[index]}
+            context={context} metadata={metadata[0].type.metadata}
+            value={value} tempVariable={tempVariable.tempVariables[0]}
             setValue={setValue}
         />
     }
@@ -517,10 +611,15 @@ const MeComponentUnionType: MeTypeComponent<MeUnionType<{name: string, type: MeT
     return <Grid2 container direction={"column"}>
         <Grid2>
             <ToggleButtonGroup exclusive value={index} onChange={(event, index) => {
-                setIndex(index)
+                if (isNil(index)) {
+                    return
+                }
                 setValue(
-                    tempVariable.values[index],
-                    tempVariable
+                    {
+                        index: index,
+                        value: tempVariable.values[index],
+                    },
+                    tempVariable,
                 )
             }}>
                 {metadata.map((meType, index) => (
@@ -533,25 +632,31 @@ const MeComponentUnionType: MeTypeComponent<MeUnionType<{name: string, type: MeT
             </ToggleButtonGroup>
         </Grid2>
         <Grid2>
-            <Component
-                context={context} metadata={metadata[index].type.metadata}
-                value={value} tempVariable={tempVariable.tempVariables[index]}
-                setValue={(value, compTempVariable) => {
-                    setValue(
-                        value,
-                        {
-                            values: (tempVariable.values).map((itemValue, itemIndex) => itemIndex !== index ? itemValue : value),
-                            tempVariables: tempVariable.tempVariables.map((itemValue, itemIndex) => itemIndex !== index ? itemValue : compTempVariable)
-                        }
-                    )
-                }}
-            />
+            {!isNull(index) && (
+                <Component
+                    context={context} metadata={metadata[index].type.metadata}
+                    value={value?.value ?? null} tempVariable={tempVariable.tempVariables[index]}
+                    setValue={(value, compTempVariable) => {
+                        setValue(
+                            {
+                                index: index,
+                                value: value,
+                            },
+                            {
+                                values: (tempVariable.values).map((itemValue, itemIndex) => itemIndex !== index ? itemValue : value),
+                                tempVariables: tempVariable.tempVariables.map((itemValue, itemIndex) => itemIndex !== index ? itemValue : compTempVariable)
+                            }
+                        )
+                    }}
+                />
+            )}
         </Grid2>
     </Grid2>
 }
 
 // # MeVoidType
 export class MeVoidType extends MeType<void> {
+    static readonly BASE_TYPE = new MeVoidType()
     constructor(metadata: void) {
         super("void", () => new MeVoidType(), metadata);
     }
@@ -560,6 +665,8 @@ export class MeVoidType extends MeType<void> {
         return isNil(value);
     }
 }
+
+const MeComponentVoidType: MeTypeComponent<MeVoidType> = () => <></>
 
 // # MeFileTypeMetadata
 const meMetadataType = new MeObjectType({
@@ -576,6 +683,7 @@ const meFileTypeValueType = new MeObjectType({
 export type MeFileTypeValue = typeof meFileTypeValueType["_type"];
 
 export class MeFileType<Metadata extends MeFileTypeMetadata = MeFileTypeMetadata> extends MeType<MeFileTypeValue, Metadata> {
+    static readonly BASE_TYPE = new MeFileType({type: "*"})
     constructor(metadata: Metadata) {
         super("file", () => meMetadataType, metadata, (metadata) => new MeObjectType({
             ...meFileTypeValueType.metadata,
@@ -652,6 +760,7 @@ const meImageTypeValueType = new MeObjectType({
 type MeImageTypeValue = typeof meImageTypeValueType["_type"]
 
 export class MeImageType extends MeType<MeImageTypeValue> {
+    static readonly BASE_TYPE = new MeImageType()
     constructor(metadata: void) {
         super("image", () => new MeVoidType(), metadata);
     }
@@ -680,18 +789,8 @@ const MeComponentImageType: MeTypeComponent<MeImageType, File | null> = ({contex
     </Grid2>
 }
 
-// # MeAnyType
-export class MeAnyType extends MeType<any> {
-    constructor() {
-        super("any", () => new MeVoidType());
-    }
-
-    check(metadata: void, value: any): boolean {
-        return true;
-    }
-}
-
 const types = [
+    {name: "类型定义", type: new MeTypeType(new MeAnyType())},
     {name: "文本", type: new MeStringType()},
     {name: "数值", type: new MeNumberType()},
     {name: "开关", type: new MeBooleanType()},
@@ -721,6 +820,8 @@ const MeComponentAnyType: MeTypeComponent<MeAnyType, { values: any[], tempVariab
 }
 
 const typeIdAndComponent = {
+    type: MeComponentTypeType,
+    void: MeComponentVoidType,
     boolean: MeComponentBooleanType,
     number: MeComponentNumberType,
     string: MeComponentStringType,
@@ -744,16 +845,16 @@ const MeTypeComponentContextInstance : MeTypeComponentContext = {
 
 export const PublicMeAnyTypeComponent = ({value, onChange} : {value: any, onChange: (value: any) => void}) => {
 
-    const tempVarRef = useRef({value: undefined as any, tempVar: undefined as any});
+    const tempVarRef = useRef({});
 
-    return <MeComponentAnyType
-        metadata={undefined}
-        value={value}
-        tempVariable={tempVarRef.current.value === value ? tempVarRef.current.tempVar : undefined}
-        setValue={(value: any, tempVar: any) => {
-            onChange(value)
-            tempVarRef.current = {value, tempVar}
-        }}
+    return <MeComponentRecordType
         context={MeTypeComponentContextInstance}
+        metadata={{valueType: new MeAnyType()}}
+        value={value}
+        tempVariable={tempVarRef.current === value ? tempVarRef.current : undefined}
+        setValue={(value: any, tempVar: any) => {
+            tempVarRef.current = tempVar
+            onChange(value)
+        }}
     />
 }
