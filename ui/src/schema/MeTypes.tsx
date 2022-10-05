@@ -141,7 +141,7 @@ const MeComponentStringType: MeTypeComponent<MeStringType> = ({metadata, value, 
 export class MeLiteralType<Value extends Primitive = Primitive> extends MeType<Value, Value> {
     constructor(metadata: Value) {
         super("literal", () => new MeUnionType([
-            new MeNumberType(), new MeStringType(), new MeBooleanType()
+            {name: "数值", type: new MeNumberType()}, {name: "文本", type: new MeStringType()}, {name: "开关", type: new MeBooleanType()}
         ]), metadata);
     }
 
@@ -252,7 +252,7 @@ export type MeOptionalTypeMetadataType<ValueType extends MeTypeAny> = { innerTyp
 export class MeOptionalType<Type extends MeTypeAny> extends MeType<MeOptionalTypeValueType<Type>, MeOptionalTypeMetadataType<Type>> {
     constructor(metadata: MeOptionalTypeMetadataType<Type>) {
         super("optional", () => new MeObjectType({innerType: new MeAnyType()}), metadata, (metadata) => new MeUnionType([
-            metadata.innerType, new MeNullType()
+            {name: String(metadata.innerType.id), /*TODO*/ type: metadata.innerType}, {name: "空值", type: new MeNullType()}
         ]));
     }
 
@@ -463,17 +463,17 @@ export class MeTypeType<Type extends MeTypeAny> extends MeType<Type, Type> {
 }
 
 // # MeUnionType
-export type MeUnionTypeValueType<Types extends MeTypeAny[]> = Types[number]["_type"]
-export type MeUnionTypeMetadataType<Types extends MeTypeAny[]> = Types
+export type MeUnionTypeValueType<Types extends {name: string, type: MeTypeAny}[]> = Types[number]["type"]["_type"]
+export type MeUnionTypeMetadataType<Types extends {name: string, type: MeTypeAny}[]> = Types
 
-export class MeUnionType<Types extends MeTypeAny[]> extends MeType<MeUnionTypeValueType<Types>, MeUnionTypeMetadataType<Types>> {
+export class MeUnionType<Types extends {name: string, type: MeTypeAny}[]> extends MeType<MeUnionTypeValueType<Types>, MeUnionTypeMetadataType<Types>> {
     constructor(metadata: Types) {
         super("union", () => new MeListType({valueType: new MeAnyType()}), metadata);
     }
 
     check(meTypes: MeUnionTypeMetadataType<Types>, value: MeUnionTypeValueType<Types>): boolean {
         for (let meType of meTypes) {
-            if (meType.doCheck(value)) {
+            if (meType.type.doCheck(value)) {
                 return true;
             }
         }
@@ -481,7 +481,7 @@ export class MeUnionType<Types extends MeTypeAny[]> extends MeType<MeUnionTypeVa
     }
 }
 
-const MeComponentUnionType: MeTypeComponent<MeUnionType<MeTypeAny[]>, { values: any[], tempVariables: any[] }>
+const MeComponentUnionType: MeTypeComponent<MeUnionType<{name: string, type: MeTypeAny}[]>, { values: any[], tempVariables: any[] }>
     = ({
            metadata: metadata,
            value,
@@ -498,7 +498,7 @@ const MeComponentUnionType: MeTypeComponent<MeUnionType<MeTypeAny[]>, { values: 
         () => {
             const lazyLoadComponents: MeTypeComponent<any, any>[] = []
             return (index: number) => {
-                return lazyLoadComponents[index] ??= context.getTypeComponent(metadata[index].id);
+                return lazyLoadComponents[index] ??= context.getTypeComponent(metadata[index].type.id);
             }
         },
         metadata
@@ -508,7 +508,7 @@ const MeComponentUnionType: MeTypeComponent<MeUnionType<MeTypeAny[]>, { values: 
 
     if (metadata.length === 1) {
         return <Component
-            context={context} metadata={metadata[index].metadata}
+            context={context} metadata={metadata[index].type.metadata}
             value={value} tempVariable={tempVariable.tempVariables[index]}
             setValue={setValue}
         />
@@ -527,14 +527,14 @@ const MeComponentUnionType: MeTypeComponent<MeUnionType<MeTypeAny[]>, { values: 
                     <ToggleButton
                         value={index}
                     >
-                        {meType.id}
+                        {meType.name}
                     </ToggleButton>
                 ))}
             </ToggleButtonGroup>
         </Grid2>
         <Grid2>
             <Component
-                context={context} metadata={metadata[index].metadata}
+                context={context} metadata={metadata[index].type.metadata}
                 value={value} tempVariable={tempVariable.tempVariables[index]}
                 setValue={(value, compTempVariable) => {
                     setValue(
@@ -691,20 +691,20 @@ export class MeAnyType extends MeType<any> {
     }
 }
 
-const types: MeTypeAny[] = [
-    new MeStringType(),
-    new MeNumberType(),
-    new MeBooleanType(),
-    new MeObjectType({
+const types = [
+    {name: "文本", type: new MeStringType()},
+    {name: "数值", type: new MeNumberType()},
+    {name: "开关", type: new MeBooleanType()},
+    {name: "对象", type: new MeObjectType({
         name: new MeStringType(), // TODO
         man: new MeBooleanType(),
         age: new MeNumberType(),
-    }),
-    new MeListType({
+    })},
+    {name: "列表", type: new MeListType({
         valueType: new MeStringType(), // TODO
-    }),
-    new MeFileType({type: "*"}),
-    new MeImageType(),
+    })},
+    {name: "文件", type: new MeFileType({type: "*"})},
+    {name: "图像", type: new MeImageType()},
 ]
 
 
