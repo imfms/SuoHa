@@ -1,5 +1,5 @@
 import {isNil, Primitive} from "./util";
-import {ComponentType, useEffect, useMemo, useRef, useState} from "react";
+import {ComponentType, useMemo, useRef, useState} from "react";
 import {IconButton, Switch, TextField, ToggleButton, ToggleButtonGroup} from "@mui/material";
 import Grid2 from "@mui/material/Unstable_Grid2";
 import HighlightOffIcon from '@mui/icons-material/HighlightOff';
@@ -481,13 +481,18 @@ export class MeUnionType<Types extends MeTypeAny[]> extends MeType<MeUnionTypeVa
     }
 }
 
-const MeComponentUnionType: MeTypeComponent<MeUnionType<MeTypeAny[]>, {values: any[], tempVariables: any[]}> = ({
-                                                                                metadata,
-                                                                                value,
-                                                                                tempVariable = {values: [], tempVariables: []},
-                                                                                setValue,
-                                                                                context
-                                                                            }) => {
+const MeComponentUnionType: MeTypeComponent<MeUnionType<MeTypeAny[]>, { values: any[], tempVariables: any[] }>
+    = ({
+           metadata: metadata,
+           value,
+           tempVariable = {
+               values: Array.apply(null, Array(metadata.length)),
+               tempVariables: Array.apply(null, Array(metadata.length)),
+           },
+           setValue,
+           context
+       }) => {
+
     const [index, setIndex] = useState(0);
     const componentGetter = useMemo(
         () => {
@@ -499,24 +504,11 @@ const MeComponentUnionType: MeTypeComponent<MeUnionType<MeTypeAny[]>, {values: a
         metadata
     )
 
-    useEffect(
-        () => {
-            const beforeValue = tempVariable.values[index];
-            const hasBeforeValue = beforeValue !== undefined;
-            if (hasBeforeValue) {
-                setValue(beforeValue, tempVariable)
-                value = beforeValue
-            }
-        },
-        [index]
-    )
-
     const Component = useMemo(() => componentGetter(index), [index])
-
 
     if (metadata.length === 1) {
         return <Component
-            context={context} metadata={metadata[index]}
+            context={context} metadata={metadata[index].metadata}
             value={value} tempVariable={tempVariable.tempVariables[index]}
             setValue={setValue}
         />
@@ -524,7 +516,13 @@ const MeComponentUnionType: MeTypeComponent<MeUnionType<MeTypeAny[]>, {values: a
 
     return <Grid2 container direction={"column"}>
         <Grid2>
-            <ToggleButtonGroup exclusive value={index} onChange={(event, value) => setIndex(value)}>
+            <ToggleButtonGroup exclusive value={index} onChange={(event, index) => {
+                setIndex(index)
+                setValue(
+                    tempVariable.values[index],
+                    tempVariable
+                )
+            }}>
                 {metadata.map((meType, index) => (
                     <ToggleButton
                         value={index}
@@ -536,16 +534,16 @@ const MeComponentUnionType: MeTypeComponent<MeUnionType<MeTypeAny[]>, {values: a
         </Grid2>
         <Grid2>
             <Component
-                context={context} metadata={metadata[index]}
+                context={context} metadata={metadata[index].metadata}
                 value={value} tempVariable={tempVariable.tempVariables[index]}
-                setValue={(value, tempVariable) => {
-                    const newTempVariable = {
-                        values: [...tempVariable.values],
-                        tempVariables: [...tempVariable.tempVariables]
-                    };
-                    newTempVariable.values[index] = value;
-                    newTempVariable.tempVariables[index] = tempVariable;
-                    setValue(value, tempVariable)
+                setValue={(value, compTempVariable) => {
+                    setValue(
+                        value,
+                        {
+                            values: (tempVariable.values).map((itemValue, itemIndex) => itemIndex !== index ? itemValue : value),
+                            tempVariables: tempVariable.tempVariables.map((itemValue, itemIndex) => itemIndex !== index ? itemValue : compTempVariable)
+                        }
+                    )
                 }}
             />
         </Grid2>
@@ -593,11 +591,21 @@ export class MeFileType<Metadata extends MeFileTypeMetadata = MeFileTypeMetadata
 }
 
 const MeComponentFileType: MeTypeComponent<MeFileType, File | null> = ({metadata, value, tempVariable, setValue}) => {
+
+    const inputRef = useRef<HTMLInputElement>(null);
+
     return <Grid2 container>
-        <Grid2>
-            <input
+        <Grid2 flexGrow={1}>
+            <TextField
+                fullWidth
+                value={value?.name ?? "选择文件"}
+                InputProps={{readOnly: true}}
+                onClick={() => {
+                    inputRef.current?.click();
+                }}
+            />
+            <input ref={inputRef} style={{display: "none"}}
                 type="file" multiple={false}
-                // value={tempVariable as any}
                 accept={isNil(metadata.type) ? "*/*" : `*.${metadata.type}`}
                 onChange={event => {
                     const file = event.target.files?.[0];
@@ -625,7 +633,7 @@ const MeComponentFileType: MeTypeComponent<MeFileType, File | null> = ({metadata
                 }}
             />
         </Grid2>
-        {value && (
+        {value && !isNil(value) && (
             <Grid2>
                 <IconButton download href={value.dataUrl}>
                     <DownloadIcon/>
@@ -700,85 +708,17 @@ const types: MeTypeAny[] = [
 ]
 
 
-const MeComponentAnyType: MeTypeComponent<MeAnyType, { values: any[], tempVariables: any[] }> = ({
-                                                                                                     value,
-                                                                                                     tempVariable = {
-                                                                                                         values: Array.apply(null, Array(types.length)),
-                                                                                                         tempVariables: Array.apply(null, Array(types.length)),
-                                                                                                     },
-                                                                                                     setValue,
-                                                                                                     context
-                                                                                                 }) => {
-
-    const [index, setIndex] = useState(0);
-    const componentGetter = useMemo(
-        () => {
-            const lazyLoadComponents: MeTypeComponent<any, any>[] = []
-            return (index: number) => {
-                return lazyLoadComponents[index] ??= context.getTypeComponent(types[index].id);
-            }
-        },
-        types
-    )
-
-    // useEffect(
-    //     () => {
-    //         const beforeValue = tempVariable.values[index];
-    //         const hasBeforeValue = beforeValue !== undefined;
-    //         if (hasBeforeValue) {
-    //             setValue(beforeValue, tempVariable)
-    //             value = beforeValue
-    //         }
-    //     },
-    //     [index]
-    // )
-
-    const Component = useMemo(() => componentGetter(index), [index])
-
-    if (types.length === 1) {
-        return <Component
-            context={context} metadata={types[index].metadata}
-            value={value} tempVariable={tempVariable.tempVariables[index]}
-            setValue={setValue}
-        />
-    }
-
-    return <Grid2 container direction={"column"}>
-        <Grid2>
-            <ToggleButtonGroup exclusive value={index} onChange={(event, index) => {
-                setIndex(index)
-                setValue(
-                    tempVariable.values[index],
-                    tempVariable
-                )
-            }}>
-                {types.map((meType, index) => (
-                    <ToggleButton
-                        value={index}
-                    >
-                        {meType.id}
-                    </ToggleButton>
-                ))}
-            </ToggleButtonGroup>
-        </Grid2>
-        <Grid2>
-            <Component
-                context={context} metadata={types[index].metadata}
-                value={value} tempVariable={tempVariable.tempVariables[index]}
-                setValue={(value, compTempVariable) => {
-                    setValue(
-                        value,
-                        {
-                            values: (tempVariable.values).map((itemValue, itemIndex) => itemIndex !== index ? itemValue : value),
-                            tempVariables: tempVariable.tempVariables.map((itemValue, itemIndex) => itemIndex !== index ? itemValue : compTempVariable)
-                        }
-                    )
-                }}
-            />
-        </Grid2>
-    </Grid2>
+const MeComponentAnyType: MeTypeComponent<MeAnyType, { values: any[], tempVariables: any[] }>
+    = ({
+           context,
+           value, tempVariable, setValue,
+       }) => {
+    return <MeComponentUnionType
+        context={context} metadata={types}
+        value={value} tempVariable={tempVariable}
+        setValue={setValue}
+    />
 }
-
 
 const typeIdAndComponent = {
     boolean: MeComponentBooleanType,
