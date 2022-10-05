@@ -50,7 +50,7 @@ export const MuiTheme = createTheme({
             }
         },
         MuiButtonBase: {
-            styleOverrides: {}
+            styleOverrides: {},
         },
         MuiButton: {
             styleOverrides: {
@@ -62,6 +62,9 @@ export const MuiTheme = createTheme({
                     paddingBottom: "2px",
                 },
             },
+            defaultProps: {
+                size: "small",
+            }
         },
         // MuiDatePicker: {
         //     defaultProps: {
@@ -148,6 +151,7 @@ export const MuiTheme = createTheme({
         MuiTextField: {
             defaultProps: {
                 fullWidth: true,
+                size: "small",
             }
         },
         MuiDialog: {
@@ -220,6 +224,11 @@ export const MuiTheme = createTheme({
                 root: {
                     minWidth: 0,
                 }
+            }
+        },
+        MuiSelect: {
+            defaultProps: {
+                size: "small",
             }
         }
     }

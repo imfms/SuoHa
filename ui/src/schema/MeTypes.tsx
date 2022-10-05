@@ -1,6 +1,6 @@
 import {isNil, isNull, Primitive} from "./util";
 import {ComponentType, useMemo, useRef} from "react";
-import {IconButton, Switch, TextField, ToggleButton, ToggleButtonGroup} from "@mui/material";
+import {FormControl, IconButton, InputLabel, MenuItem, Select, Switch, TextField} from "@mui/material";
 import Grid2 from "@mui/material/Unstable_Grid2";
 import HighlightOffIcon from '@mui/icons-material/HighlightOff';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
@@ -332,7 +332,7 @@ const MeComponentRecordType: MeTypeComponent<MeRecordType<MeTypeAny>, { [key: st
         {Object.entries(values ?? {}).map(([itemIndex, itemValue]) => {
             return <Grid2 container>
                 <Grid2 xs={"auto"}>
-                    <TextField value={itemIndex} InputProps={{readOnly: true}}/>
+                    <TextField value={itemIndex} label={"名称"} InputProps={{readOnly: true}} inputProps={{size: 8}}/>
                 </Grid2>
                 <Grid2 xs>
                     <ItemComponent
@@ -341,11 +341,15 @@ const MeComponentRecordType: MeTypeComponent<MeRecordType<MeTypeAny>, { [key: st
                         value={itemValue}
                         tempVariable={tempVariables?.[itemIndex] ?? undefined}
                         setValue={(newItemValue, newItemTempVariable) => {
-                            const newValues = {...values};
-                            newValues[itemIndex] = newItemValue;
+                            const newValues = {
+                                ...values,
+                                [itemIndex]: newItemValue,
+                            };
 
-                            const newTempVariables = {...tempVariables};
-                            newTempVariables[itemIndex] = newItemTempVariable;
+                            const newTempVariables = {
+                                ...tempVariables,
+                                [itemIndex]: newItemTempVariable
+                            };
 
                             setValues(newValues, newTempVariables)
                         }}
@@ -368,12 +372,12 @@ const MeComponentRecordType: MeTypeComponent<MeRecordType<MeTypeAny>, { [key: st
         })}
         <Grid2>
             <IconButton onClick={() => {
-                const key = prompt("Enter key", "");
+                const key = prompt("输入名称", "");
                 if (isEmpty(key)) {
                     return;
                 }
                 if (Reflect.has(values ?? {}, key as string)) {
-                    alert(`key '${key}' already exists`);
+                    alert(`名称 '${key}' 已存在`);
                     return;
                 }
                 setValues(
@@ -608,30 +612,39 @@ const MeComponentUnionType: MeTypeComponent<MeUnionType<{name: string, type: MeT
         />
     }
 
-    return <Grid2 container direction={"column"}>
-        <Grid2>
-            <ToggleButtonGroup exclusive value={index} onChange={(event, index) => {
-                if (isNil(index)) {
-                    return
-                }
-                setValue(
-                    {
-                        index: index,
-                        value: tempVariable.values[index],
-                    },
-                    tempVariable,
-                )
-            }}>
-                {metadata.map((meType, index) => (
-                    <ToggleButton
-                        value={index}
-                    >
-                        {meType.name}
-                    </ToggleButton>
-                ))}
-            </ToggleButtonGroup>
+    return <Grid2 container>
+        <Grid2 minWidth={"12ch"}>
+            <FormControl fullWidth>
+                <InputLabel id={"data-type"}>数据类型</InputLabel>
+                <Select
+                    fullWidth
+                    labelId={"data-type"}
+                    label={"数据类型"}
+                    defaultOpen
+                    value={index}
+                    onChange={event => {
+                        const index = event.target.value as number
+                        if (isNil(index)) {
+                            return
+                        }
+                        setValue(
+                            {
+                                index: index,
+                                value: tempVariable.values[index],
+                            },
+                            tempVariable,
+                        )
+                    }}
+                >
+                    {metadata.map((meType, index) => (
+                        <MenuItem value={index}>
+                            {meType.name}
+                        </MenuItem>
+                    ))}
+                </Select>
+            </FormControl>
         </Grid2>
-        <Grid2>
+        <Grid2 flexGrow={1}>
             {!isNull(index) && (
                 <Component
                     context={context} metadata={metadata[index].type.metadata}
@@ -651,7 +664,7 @@ const MeComponentUnionType: MeTypeComponent<MeUnionType<{name: string, type: MeT
                 />
             )}
         </Grid2>
-    </Grid2>
+    </Grid2>;
 }
 
 // # MeVoidType
@@ -794,6 +807,7 @@ const types = [
     {name: "文本", type: new MeStringType()},
     {name: "数值", type: new MeNumberType()},
     {name: "开关", type: new MeBooleanType()},
+    {name: "键值对", type: new MeRecordType({valueType: new MeAnyType()})},
     {name: "对象", type: new MeObjectType({
         name: new MeStringType(), // TODO
         man: new MeBooleanType(),
@@ -851,7 +865,7 @@ export const PublicMeAnyTypeComponent = ({value, onChange} : {value: any, onChan
         context={MeTypeComponentContextInstance}
         metadata={{valueType: new MeAnyType()}}
         value={value}
-        tempVariable={tempVarRef.current === value ? tempVarRef.current : undefined}
+        tempVariable={tempVarRef.current}
         setValue={(value: any, tempVar: any) => {
             tempVarRef.current = tempVar
             onChange(value)
