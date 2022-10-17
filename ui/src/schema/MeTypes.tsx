@@ -821,15 +821,22 @@ const types = [
 ]
 
 
-const MeComponentAnyType: MeTypeComponent<MeAnyType, { values: any[], tempVariables: any[] }>
+const MeComponentAnyType: MeTypeComponent<MeAnyType, { values: any[], tempVariables: any[] }, {type: MeTypeType<any>, value: any}>
     = ({
            context,
            value, tempVariable, setValue,
        }) => {
     return <MeComponentUnionType
         context={context} metadata={types}
-        value={value} tempVariable={tempVariable}
-        setValue={setValue}
+        value={isNull(value) ? null : {index: types.findIndex(type => type.type == value.type), value: value.value}}
+            tempVariable={tempVariable}
+        setValue={(value, tempVariable) => {
+            if (isNull(value)) {
+                setValue(null, tempVariable);
+            } else {
+                setValue({type: types[value.index].type, value: value.value}, tempVariable)
+            }
+        }}
     />
 }
 
