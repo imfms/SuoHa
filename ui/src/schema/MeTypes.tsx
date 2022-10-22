@@ -679,6 +679,26 @@ export class MeVoidType extends MeType<void> {
     }
 }
 
+type FunctionMetadataType<Input extends MeTypeAny, Output extends MeTypeAny> = {
+    input: Input,
+    output: Output,
+}
+
+type FunctionValueType<Input extends MeTypeAny, Output extends MeTypeAny> = (input: Input["_type"]) => Output["_type"]
+
+export class MeFunctionType<Input extends MeTypeAny, Output extends MeTypeAny
+    > extends MeType<FunctionValueType<Input, Output>, FunctionMetadataType<Input, Output>> {
+    static readonly BASE_TYPE = new MeFunctionType({input: new MeAnyType(), output: new MeAnyType()})
+
+    constructor(metadata: FunctionMetadataType<Input, Output>) {
+        super("function", () => new MeVoidType(), metadata);
+    }
+
+    protected check(metadata: FunctionMetadataType<Input, Output>, value: FunctionValueType<Input, Output>): boolean {
+        return false;
+    }
+}
+
 const MeComponentVoidType: MeTypeComponent<MeVoidType> = () => <></>
 
 // # MeFileTypeMetadata
@@ -805,6 +825,18 @@ const MeComponentImageType: MeTypeComponent<MeImageType, File | null> = ({contex
 const types = [
     {name: "类型定义", type: new MeTypeType(new MeAnyType())},
     {name: "文本", type: new MeStringType()},
+    {name: "People", type: new MeObjectType({
+            name: new MeStringType(),
+            age: new MeNumberType(),
+            gender: new MeBooleanType(),
+            friends: new MeListType({
+                valueType: new MeObjectType({
+                    name: new MeStringType(),
+                    age: new MeNumberType(),
+                    gender: new MeBooleanType(),
+                })
+            })
+        })},
     {name: "数值", type: new MeNumberType()},
     {name: "开关", type: new MeBooleanType()},
     {name: "键值对", type: new MeRecordType({valueType: new MeAnyType()})},
@@ -878,4 +910,21 @@ export const PublicMeAnyTypeComponent = ({value, onChange} : {value: any, onChan
             onChange(value)
         }}
     />
+}
+
+type ValueType<MeType extends MeTypeType<any>> = {
+    type: MeTypeType<MeType>,
+    value: MeType["_type"],
+}
+
+type RefValueType = {
+    // type: ValueType<Function>,
+}
+
+type ValueType2 = {
+    type: {
+        id: string,
+        metadata: any,
+    },
+    value: any,
 }
