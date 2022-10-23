@@ -16,14 +16,19 @@ export type MeValue<Type extends MeTypeAny> = {
 }
 
 type MeTypeSubLocator<Type, Metadata, SubLocatePath> = {
-    pathType: (value: Type, /* TODO 期望类型 */ metadata: Metadata) => MeType<SubLocatePath, any, any>
-    locator: (metadata: Metadata, path: SubLocatePath, value: Type) => {
+    pathType: (value: Type, /* TODO 期望类型 */ metadata: Metadata, context: MeContext) => MeType<SubLocatePath, any, any> | undefined
+    locator: (metadata: Metadata, path: SubLocatePath, value: Type, context: MeContext) => {
         type: MeTypeAny,
         value: any,
     }
 };
+type ValueGetter<Type, Metadata> = (metadata: Metadata, value: Type, context: MeContext) => MeTypeValue;
 
 class TargetNotExist extends TraceError {}
+
+type MeContext = {
+    rootValue: () => MeTypeValue,
+}
 
 export abstract class MeType<Type, Metadata = void, SubLocatePath = void> {
     readonly _type!: Type;
@@ -32,17 +37,20 @@ export abstract class MeType<Type, Metadata = void, SubLocatePath = void> {
     readonly metadata: Metadata;
     readonly id: string | number;
     readonly subLocator?: MeTypeSubLocator<Type, Metadata, SubLocatePath>;
+    readonly valueGetter?: ValueGetter<Type, Metadata>;
 
     constructor(
         id: string | number,
         metadataType: () => MeTypeAny, metadata: Metadata,
         valueType?: (metadata: Metadata) => MeType<Type, any, any>,
-        subLocator?: MeTypeSubLocator<Type, Metadata, SubLocatePath>) {
+        subLocator?: MeTypeSubLocator<Type, Metadata, SubLocatePath>,
+        valueGetter?: ValueGetter<Type, Metadata>) {
         this.id = id;
         this.metadata = metadata;
         this.metaDataType = metadataType;
         this.valueType = valueType;
         this.subLocator = subLocator;
+        this.valueGetter = valueGetter;
     }
 
     doCheck(value: Type) {
@@ -57,7 +65,7 @@ export abstract class MeType<Type, Metadata = void, SubLocatePath = void> {
 }
 
 type MeTypeComponentGetter = (type: MeTypeAny["id"]) => MeTypeComponent<MeTypeAny, any>
-type MeTypeComponentContext = { getTypeComponent: MeTypeComponentGetter }
+type MeTypeComponentContext = { getTypeComponent: MeTypeComponentGetter } & MeContext
 
 type MeTypeComponent<MeType extends MeTypeAny, TempVarType = void, ValueType = MeType["_type"]> = ComponentType<{
     metadata: MeType["metadata"],
@@ -75,11 +83,13 @@ export class MeAnyType extends MeType<{type: MeTypeType, value: any}, void, any>
             () => new MeVoidType(),
             undefined, undefined,
             {
-                pathType: (value, metadata) => {
-                    return value.type.subLocator?.pathType(value.value, value.type.metadata) ?? new MeVoidType();
+                pathType: (value, metadata, context) => {
+                    // @ts-ignore
+                    return value.type.subLocator?.pathType(value.value, value.type.metadata);
                 },
                 // @ts-ignore
                 locator: (metadata, path, value) => {
+                    // @ts-ignore
                     return value.type.subLocator?.locator(value.type.metadata, path, value.value);
                 }
             }
@@ -188,7 +198,7 @@ export class MeLiteralType<Value extends Primitive = Primitive> extends MeType<V
 }
 
 const MeComponentLiteralType: MeTypeComponent<MeLiteralType> = ({metadata, value, setValue}) => {
-    if (value === null) {
+    if (isNil(value)) {
         setTimeout(() => setValue(metadata))
     }
     switch (typeof metadata) {
@@ -244,60 +254,61 @@ export class MeListType<Type extends MeTypeAny> extends MeType<MeListTypeValueTy
     }
 }
 
-const MeComponentListType: MeTypeComponent<MeListType<MeTypeAny>, any[]> = ({
-                                                                                metadata,
-                                                                                value: values,
-                                                                                tempVariable: tempVariables,
-                                                                                setValue: setValues,
-                                                                                context
-                                                                            }) => {
+const MeComponentListType: MeTypeComponent<MeListType<MeTypeAny>, any[]> =
+    ({
+         metadata,
+         value: values,
+         tempVariable: tempVariables,
+         setValue: setValues,
+         context
+     }) => {
 
-    const ItemComponent = useMemo(
-        () => context.getTypeComponent(metadata.valueType.id),
-        [metadata.valueType.id]
-    );
+        const ItemComponent = useMemo(
+            () => context.getTypeComponent(metadata.valueType.id),
+            [metadata.valueType.id]
+        );
 
-    return <Grid2 container direction={"column"}>
-        {(values ?? []).map((itemValue, itemIndex) => {
-            return <Grid2 container>
-                <Grid2 xs>
-                    <ItemComponent
-                        context={context}
-                        metadata={metadata.valueType.metadata}
-                        value={itemValue}
-                        tempVariable={tempVariables?.[itemIndex] ?? undefined}
-                        setValue={(newItemValue, newItemTempVariable) => {
+        return <Grid2 container direction={"column"}>
+            {(values ?? []).map((itemValue, itemIndex) => {
+                return <Grid2 container>
+                    <Grid2 xs>
+                        <ItemComponent
+                            context={context}
+                            metadata={metadata.valueType.metadata}
+                            value={itemValue}
+                            tempVariable={tempVariables?.[itemIndex] ?? undefined}
+                            setValue={(newItemValue, newItemTempVariable) => {
+                                setValues(
+                                    (values ?? []).map((itemValue, index) => index !== itemIndex ? itemValue : newItemValue),
+                                    (tempVariables ?? []).map((itemTempVariable, index) => index !== itemIndex ? itemTempVariable : newItemTempVariable)
+                                )
+                            }}
+                        />
+                    </Grid2>
+                    <Grid2 xs={"auto"}>
+                        <IconButton onClick={() => {
                             setValues(
-                                (values ?? []).map((itemValue, index) => index !== itemIndex ? itemValue : newItemValue),
-                                (tempVariables ?? []).map((itemTempVariable, index) => index !== itemIndex ? itemTempVariable : newItemTempVariable)
+                                (values ?? []).filter((_, index) => index !== itemIndex),
+                                (tempVariables ?? []).filter((_, index) => index !== itemIndex)
                             )
-                        }}
-                    />
+                        }}>
+                            <HighlightOffIcon/>
+                        </IconButton>
+                    </Grid2>
                 </Grid2>
-                <Grid2 xs={"auto"}>
-                    <IconButton onClick={() => {
-                        setValues(
-                            (values ?? []).filter((_, index) => index !== itemIndex),
-                            (tempVariables ?? []).filter((_, index) => index !== itemIndex)
-                        )
-                    }}>
-                        <HighlightOffIcon/>
-                    </IconButton>
-                </Grid2>
+            })}
+            <Grid2>
+                <IconButton onClick={() => {
+                    setValues(
+                        (values ?? []).concat(null),
+                        (tempVariables ?? []).concat(null)
+                    )
+                }}>
+                    <AddCircleOutlineIcon/>
+                </IconButton>
             </Grid2>
-        })}
-        <Grid2>
-            <IconButton onClick={() => {
-                setValues(
-                    (values ?? []).concat(null),
-                    (tempVariables ?? []).concat(null)
-                )
-            }}>
-                <AddCircleOutlineIcon/>
-            </IconButton>
         </Grid2>
-    </Grid2>
-}
+    }
 
 
 // # MeOptionalType
@@ -307,9 +318,22 @@ export type MeOptionalTypeMetadataType<ValueType extends MeTypeAny> = { innerTyp
 export class MeOptionalType<Type extends MeTypeAny> extends MeType<MeOptionalTypeValueType<Type>, MeOptionalTypeMetadataType<Type>> {
     static readonly BASE_TYPE = new MeOptionalType({innerType: new MeStringType()});
     constructor(metadata: MeOptionalTypeMetadataType<Type>) {
-        super("optional", () => new MeObjectType({innerType: new MeAnyType()}), metadata, (metadata) => new MeUnionType([
-            {name: String(metadata.innerType.id), /*TODO*/ type: metadata.innerType}, {name: "空值", type: new MeNullType()}
-        ]));
+        super(
+            "optional",
+            () => new MeObjectType({innerType: new MeAnyType()}),
+            metadata,
+            // @ts-ignore TODO
+            (metadata) => new MeUnionType([
+                {
+                    name: String(metadata.innerType.id),
+                    /*TODO*/ type: metadata.innerType
+                },
+                {
+                    name: "空值",
+                    type: new MeNullType()
+                }
+            ])
+        );
     }
 
     check(metadata: MeOptionalTypeMetadataType<Type>, value: MeOptionalTypeValueType<Type>): boolean {
@@ -328,7 +352,7 @@ export type MeRecordTypeMetadataType<ValueType extends MeTypeAny> = {
     valueType: ValueType,
 }
 
-export class MeRecordType<ValueType extends MeTypeAny> extends MeType<MeRecordTypeValueType<ValueType>, MeRecordTypeMetadataType<ValueType>, any> {
+export class MeRecordType<ValueType extends MeTypeAny> extends MeType<MeRecordTypeValueType<ValueType>, MeRecordTypeMetadataType<ValueType>, { index: number, value: any}> {
     static readonly BASE_TYPE = new MeRecordType({valueType: new MeStringType()})
     constructor(metadata: MeRecordTypeMetadataType<ValueType>) {
         super(
@@ -342,12 +366,12 @@ export class MeRecordType<ValueType extends MeTypeAny> extends MeType<MeRecordTy
                         .map(([key]) => ({name: key, type: new MeLiteralType(key)}))
                 ),
                 locator: (metadata, path, value) => {
-                    if (!Reflect.has(value, path)) {
+                    if (!Reflect.has(value, path.value)) {
                         throw new TargetNotExist(`指定键 ${path} 不存在`)
                     }
                     return {
                         type: metadata.valueType,
-                        value: value[path],
+                        value: value[path.value],
                     }
                 }
             }
@@ -463,7 +487,7 @@ export type baseObjectType<Shape extends ObjectShape> = flatten<addQuestionMarks
 
 type ObjectShape = { [key: string]: MeTypeAny };
 
-export class MeObjectType<Shape extends ObjectShape> extends MeType<baseObjectType<Shape>, Shape, keyof baseObjectType<Shape>> {
+export class MeObjectType<Shape extends ObjectShape> extends MeType<baseObjectType<Shape>, Shape, {index: number, value: keyof baseObjectType<Shape>}> {
     static readonly BASE_TYPE = new MeObjectType({})
     constructor(metadata: Shape) {
         super(
@@ -479,12 +503,12 @@ export class MeObjectType<Shape extends ObjectShape> extends MeType<baseObjectTy
                     )
                 ),
                 locator: (metadata, path, value) => {
-                    if (!Reflect.has(value, path)) {
+                    if (!Reflect.has(value, path.value)) {
                         throw new TargetNotExist(`指定键 ${path.toString()} 不存在`)
                     }
                     return {
-                        type: metadata[path],
-                        value: value[path],
+                        type: metadata[path.value],
+                        value: value[path.value],
                     }
                 }
             }
@@ -562,7 +586,7 @@ export class MeTypeType<Type extends MeTypeAny = MeTypeAny> extends MeType<Type,
     }
 
     check(metadata: Type, value: Type): boolean {
-        return metadata.id === value.id;
+        return metadata.id === value?.id;
     }
 }
 
@@ -636,7 +660,7 @@ const MeComponentTypeType: MeTypeComponent<MeTypeType<MeTypeAny>, { values: any[
 }
 
 // # MeUnionType
-export type MeUnionTypeValueType<Types extends {name: string, type: MeTypeAny}[]> = Types[number]["type"]["_type"]
+export type MeUnionTypeValueType<Types extends {name: string, type: MeTypeAny}[]> = {index: number, value: Types[number]["type"]["_type"]}
 export type MeUnionTypeMetadataType<Types extends {name: string, type: MeTypeAny}[]> = Types
 
 export class MeUnionType<Types extends {name: string, type: MeTypeAny}[]> extends MeType<MeUnionTypeValueType<Types>, MeUnionTypeMetadataType<Types>, any> {
@@ -648,38 +672,32 @@ export class MeUnionType<Types extends {name: string, type: MeTypeAny}[]> extend
             metadata, undefined,
             {
                 // @ts-ignore
-                pathType: (value, metadata) => {
-                    for (let typeItem of metadata) {
-                        if (typeItem.type.doCheck(value)) {
-                            return typeItem.type.subLocator?.pathType(value, typeItem.type.metadata)
-                        }
+                pathType: (value, metadata, context) => {
+                    if (isNil(value)) {
+                        return undefined
                     }
-                    return new MeVoidType();
+                    return metadata[value.index].type.subLocator?.pathType(value.value, metadata[value.index].type.metadata, context)
                 },
                 // @ts-ignore
-                locator: (metadata, path, value) => {
-                    for (let typeItem of metadata) {
-                        if (typeItem.type.doCheck(value)) {
-                            return typeItem.type.subLocator?.locator(typeItem.type.metadata, path, value)
-                        }
+                locator: (metadata, path, value, context) => {
+                    if (isNil(value)) {
+                        throw new TargetNotExist(`指定值 ${value} 类型不匹配`);
                     }
-                    throw new TargetNotExist(`指定值 ${value.toString()} 类型不匹配`);
+                    return metadata[value.index].type.subLocator?.locator(metadata[value.index].type.metadata, path, value.value, context)
                 },
             }
         );
     }
 
     check(meTypes: MeUnionTypeMetadataType<Types>, value: MeUnionTypeValueType<Types>): boolean {
-        for (let meType of meTypes) {
-            if (meType.type.doCheck(value)) {
-                return true;
-            }
+        if (isNil(value)) {
+            return false
         }
-        return false;
+        return meTypes[value.index].type.doCheck(value.value)
     }
 }
 
-const MeComponentUnionType: MeTypeComponent<MeUnionType<{name: string, type: MeTypeAny}[]>, { values: any[], tempVariables: any[] }, {index: number, value: any}>
+const MeComponentUnionType: MeTypeComponent<MeUnionType<{name: string, type: MeTypeAny}[]>, { values: any[], tempVariables: any[] }>
     = ({
            metadata: metadata,
            value,
@@ -800,6 +818,131 @@ export class MeFunctionType<Input extends MeTypeAny, Output extends MeTypeAny
     }
 }
 
+export class MeRefType<RefType extends MeTypeAny = MeTypeAny> extends MeType<MeListType<MeTypeAny>["_type"], RefType, any> {
+    static readonly BASE_TYPE = new MeRefType(new MeAnyType());
+    constructor(metadata: RefType) {
+        super(
+            "ref", () => new MeTypeType(new MeAnyType()), metadata, undefined,
+            {
+                pathType: (value, metadata, context) => {
+                    const rootValue = context.rootValue();
+                    const targetValue = MeRefType.findTargetValue(rootValue, value);
+                    return targetValue.type.subLocator?.pathType(targetValue.value, targetValue.type.metadata, context)
+                },
+                locator: (metadata, path, value, context) => {
+                    const rootValue = context.rootValue();
+                    const targetValue = MeRefType.findTargetValue(rootValue, value);
+                    const locatorValue = targetValue.type.subLocator?.locator(targetValue.type.metadata, path, targetValue.value, context);
+                    if (locatorValue === undefined) {
+                        throw new TargetNotExist(`指定路径 ${path.toString()} 不存在`);
+                    }
+                    return locatorValue
+                }
+            },
+            (metadata, value, context) => {
+                const rootValue = context.rootValue()
+                return MeRefType.findTargetValue(rootValue, value)
+            }
+        )
+    }
+
+
+    protected check(metadata: RefType, value: MeListType<MeTypeAny>["_type"]): boolean {
+        // TODO impl after
+        return false;
+    }
+
+    private static findTargetValue(rootValue: MeTypeValue, path: any[]) : MeTypeValue {
+        if (isEmpty(path)) {
+            return rootValue;
+        }
+        return path.reduce(
+            (rootValue, node) => {
+                return rootValue.type.subLocator?.locator(rootValue.metadata, node, rootValue.value)
+            },
+            rootValue
+        )
+    }
+}
+
+const MeComponentRefType: MeTypeComponent<MeRefType, any>
+    = ({
+           metadata,
+           value: path,
+           tempVariable: tempVariables,
+           setValue,
+           context
+       }) => {
+
+    const rootValue = context.rootValue();
+
+    let nodes : MeTypeValue[] = []
+    try {
+        nodes = parseRefPath(path ?? [], rootValue, context);
+    } catch (e) {
+        throw e
+        if (!(e instanceof TargetNotExist)) {
+            throw e
+        }
+    }
+
+    const objectMetadata = Object.fromEntries(
+        nodes.map((node, index) => [index, node.type])
+    );
+    const objectValue = Object.fromEntries(
+        nodes.map((node, index) => [index, node.value])
+    );
+
+    return <MeComponentObjectType
+        metadata={objectMetadata}
+        value={objectValue}
+        tempVariable={tempVariables}
+        setValue={(objectValue, tempVariable) => {
+            const refValue = Object.entries(objectValue as any)
+                .sort(([index1], [index2]) => parseInt(index1) - parseInt(index2))
+                .map(([index, value]) => value);
+            setValue(refValue, tempVariable)
+        }}
+        context={context}
+    />
+}
+
+function parseRefPath(path: any[], rootValue: MeTypeValue, context: MeContext) : MeTypeValue[] {
+    let parentValue : MeTypeValue | undefined = rootValue;
+    let nodes = path.reduce(
+        (result, node) => {
+            if (parentValue === undefined) {
+                return result
+            }
+            const subPathType = parentValue.type.subLocator?.pathType(parentValue.value, parentValue.type.metadata, context) ?? new MeVoidType()
+            try {
+                const subValue = parentValue.type.subLocator?.locator(parentValue.type.metadata, node, parentValue.value, context)
+                parentValue = subValue
+            } catch (e) {
+                parentValue = undefined
+            }
+            result.push({
+                type: subPathType,
+                value: node,
+            })
+            return result
+        },
+        [] as MeTypeAny[]
+    );
+
+    if (!isNil(parentValue)) {
+        const appendNode = parentValue.type.subLocator?.pathType(parentValue.value, parentValue.type.metadata, context);
+        if (appendNode !== undefined) {
+            nodes.push({
+                type: appendNode,
+                value: null,
+            })
+        }
+    }
+
+    return nodes
+}
+
 const MeComponentVoidType: MeTypeComponent<MeVoidType> = () => <></>
 
 // # MeFileTypeMetadata
@@ -900,6 +1043,9 @@ export class MeImageType extends MeType<MeImageTypeValue> {
     }
 
     check(metadata: void, value: MeImageTypeValue): boolean {
+        if (isNil(value)) {
+            return false
+        }
         return true;
     }
 }
@@ -925,6 +1071,7 @@ const MeComponentImageType: MeTypeComponent<MeImageType, File | null> = ({contex
 
 const types = [
     {name: "类型定义", type: new MeTypeType(new MeAnyType())},
+    {name: "引用类型", type: new MeRefType(new MeAnyType())},
     {name: "文本", type: new MeStringType()},
     {name: "People", type: new MeObjectType({
             name: new MeStringType(),
@@ -975,6 +1122,7 @@ const MeComponentAnyType: MeTypeComponent<MeAnyType, { values: any[], tempVariab
 
 const typeIdAndComponent = {
     type: MeComponentTypeType,
+    ref: MeComponentRefType,
     void: MeComponentVoidType,
     boolean: MeComponentBooleanType,
     number: MeComponentNumberType,
@@ -988,21 +1136,24 @@ const typeIdAndComponent = {
     image: MeComponentImageType,
     any: MeComponentAnyType,
 }
-const MeTypeComponentContextInstance : MeTypeComponentContext = {
-    getTypeComponent: type => {
-        // @ts-ignore
-        return typeIdAndComponent[type] ?? (() => {
-            return <>暂不支持的类型: {type}</>
-        })
-    }
-}
 
 export const PublicMeAnyTypeComponent = ({value, onChange} : {value: any, onChange: (value: any) => void}) => {
 
     const tempVarRef = useRef({});
 
     return <MeComponentRecordType
-        context={MeTypeComponentContextInstance}
+        context={{
+            getTypeComponent: type => {
+                // @ts-ignore
+                return typeIdAndComponent[type] ?? (() => {
+                    return <>暂不支持的类型: {type}</>
+                })
+            },
+            rootValue: () => ({
+                type: new MeRecordType({valueType: new MeAnyType()}),
+                value: value,
+            }),
+        }}
         metadata={{valueType: new MeAnyType()}}
         value={value}
         tempVariable={tempVarRef.current}
@@ -1013,8 +1164,8 @@ export const PublicMeAnyTypeComponent = ({value, onChange} : {value: any, onChan
     />
 }
 
-type ValueType<MeType extends MeTypeType<any>> = {
-    type: MeTypeType<MeType>,
+type MeTypeValue<MeType extends MeTypeAny = MeTypeAny> = {
+    type: MeType,
     value: MeType["_type"],
 }
 
