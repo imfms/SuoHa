@@ -6,38 +6,43 @@ import HighlightOffIcon from '@mui/icons-material/HighlightOff';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import DownloadIcon from '@mui/icons-material/Download';
 import {isEmpty} from "lodash";
+import {TraceError} from "../util/TraceError";
 
 // # MeType
-export type MeTypeAny = MeType<any, any>
+export type MeTypeAny = MeType<any, any, any>
 
 export type MeValue<Type extends MeTypeAny> = {
     value: Type["_type"],
 }
 
-export abstract class MeType<Type, Metadata = void> {
+type MeTypeSubLocator<Type, Metadata, SubLocatePath> = {
+    pathType: (value: Type, /* TODO 期望类型 */ metadata: Metadata) => MeType<SubLocatePath, any, any>
+    locator: (metadata: Metadata, path: SubLocatePath, value: Type) => {
+        type: MeTypeAny,
+        value: any,
+    }
+};
+
+class TargetNotExist extends TraceError {}
+
+export abstract class MeType<Type, Metadata = void, SubLocatePath = void> {
     readonly _type!: Type;
-    readonly valueType?: (metadata: any) => MeType<Type, any>;
-    readonly metaDataType: () => MeType<Metadata>;
+    readonly valueType?: (metadata: any) => MeType<Type, any, any>;
+    readonly metaDataType: () => MeType<Metadata, any, any>;
     readonly metadata: Metadata;
     readonly id: string | number;
+    readonly subLocator?: MeTypeSubLocator<Type, Metadata, SubLocatePath>;
 
-    constructor(id: string | number, metadataType: () => MeTypeAny, metadata: Metadata, valueType?: (metadata: Metadata) => MeType<Type, any>) {
+    constructor(
+        id: string | number,
+        metadataType: () => MeTypeAny, metadata: Metadata,
+        valueType?: (metadata: Metadata) => MeType<Type, any, any>,
+        subLocator?: MeTypeSubLocator<Type, Metadata, SubLocatePath>) {
         this.id = id;
         this.metadata = metadata;
         this.metaDataType = metadataType;
         this.valueType = valueType;
-    }
-
-    optional(): MeOptionalType<this> {
-        return new MeOptionalType<this>({
-            innerType: this,
-        })
-    }
-
-    list(): MeListType<this> {
-        return new MeListType<this>({
-            valueType: this,
-        })
+        this.subLocator = subLocator;
     }
 
     doCheck(value: Type) {
@@ -62,10 +67,23 @@ type MeTypeComponent<MeType extends MeTypeAny, TempVarType = void, ValueType = M
 }>
 
 // # MeAnyType
-export class MeAnyType extends MeType<any> {
+export class MeAnyType extends MeType<{type: MeTypeType, value: any}, void, any> {
     static readonly BASE_TYPE = new MeAnyType()
     constructor() {
-        super("any", () => new MeVoidType());
+        super(
+            "any",
+            () => new MeVoidType(),
+            undefined, undefined,
+            {
+                pathType: (value, metadata) => {
+                    return value.type.subLocator?.pathType(value.value, value.type.metadata) ?? new MeVoidType();
+                },
+                // @ts-ignore
+                locator: (metadata, path, value) => {
+                    return value.type.subLocator?.locator(value.type.metadata, path, value.value);
+                }
+            }
+        );
     }
 
     check(metadata: void, value: any): boolean {
@@ -189,10 +207,27 @@ const MeComponentLiteralType: MeTypeComponent<MeLiteralType> = ({metadata, value
 export type MeListTypeValueType<Type extends MeTypeAny> = Type["_type"][]
 export type MeListTypeMetadataType<Type extends MeTypeAny> = { valueType: Type }
 
-export class MeListType<Type extends MeTypeAny> extends MeType<MeListTypeValueType<Type>, MeListTypeMetadataType<Type>> {
+export class MeListType<Type extends MeTypeAny> extends MeType<MeListTypeValueType<Type>, MeListTypeMetadataType<Type>, number> {
     static readonly BASE_TYPE = new MeListType({valueType: new MeNullType()})
     constructor(metadata: MeListTypeMetadataType<Type>) {
-        super("list", () => new MeObjectType({valueType: new MeTypeType(new MeAnyType())}), metadata);
+        super(
+            "list",
+            () => new MeObjectType({valueType: new MeTypeType(new MeAnyType())}),
+            metadata,
+            undefined,
+            {
+                pathType: value => new MeNumberType(),
+                locator: (metadata, path, value) => {
+                    if (path > value.length - 1) {
+                        throw new TargetNotExist(`指定序号 ${path} 超出列表大小 ${value.length}`)
+                    }
+                    return {
+                        type: metadata.valueType,
+                        value: value[path],
+                    }
+                },
+            }
+        );
     }
 
     check(metadata: MeListTypeMetadataType<Type>, values: MeListTypeValueType<Type>): boolean {
@@ -293,10 +328,30 @@ export type MeRecordTypeMetadataType<ValueType extends MeTypeAny> = {
     valueType: ValueType,
 }
 
-export class MeRecordType<ValueType extends MeTypeAny> extends MeType<MeRecordTypeValueType<ValueType>, MeRecordTypeMetadataType<ValueType>> {
+export class MeRecordType<ValueType extends MeTypeAny> extends MeType<MeRecordTypeValueType<ValueType>, MeRecordTypeMetadataType<ValueType>, any> {
     static readonly BASE_TYPE = new MeRecordType({valueType: new MeStringType()})
     constructor(metadata: MeRecordTypeMetadataType<ValueType>) {
-        super("record", () => new MeObjectType({valueType: new MeAnyType()}), metadata);
+        super(
+            "record",
+            () => new MeObjectType({valueType: new MeAnyType()}),
+            metadata,
+            undefined,
+            {
+                pathType: value => new MeUnionType(
+                    Object.entries(value)
+                        .map(([key]) => ({name: key, type: new MeLiteralType(key)}))
+                ),
+                locator: (metadata, path, value) => {
+                    if (!Reflect.has(value, path)) {
+                        throw new TargetNotExist(`指定键 ${path} 不存在`)
+                    }
+                    return {
+                        type: metadata.valueType,
+                        value: value[path],
+                    }
+                }
+            }
+        );
     }
 
     check(metadata: MeRecordTypeMetadataType<ValueType>, record: MeRecordTypeValueType<ValueType>): boolean {
@@ -408,10 +463,32 @@ export type baseObjectType<Shape extends ObjectShape> = flatten<addQuestionMarks
 
 type ObjectShape = { [key: string]: MeTypeAny };
 
-export class MeObjectType<Shape extends ObjectShape> extends MeType<baseObjectType<Shape>, Shape> {
+export class MeObjectType<Shape extends ObjectShape> extends MeType<baseObjectType<Shape>, Shape, keyof baseObjectType<Shape>> {
     static readonly BASE_TYPE = new MeObjectType({})
     constructor(metadata: Shape) {
-        super("object", () => new MeRecordType({valueType: new MeTypeType(new MeAnyType())}), metadata);
+        super(
+            "object",
+            () => new MeRecordType({valueType: new MeTypeType(new MeAnyType())}),
+            metadata, undefined,
+            {
+                // @ts-ignore
+                pathType: value => (
+                    new MeUnionType(
+                        Object.entries(value)
+                            .map(([key]) => ({name: key, type: new MeLiteralType(key)}))
+                    )
+                ),
+                locator: (metadata, path, value) => {
+                    if (!Reflect.has(value, path)) {
+                        throw new TargetNotExist(`指定键 ${path.toString()} 不存在`)
+                    }
+                    return {
+                        type: metadata[path],
+                        value: value[path],
+                    }
+                }
+            }
+        );
     }
 
     check(shape: Shape, objectValue: baseObjectType<Shape>): boolean {
@@ -478,7 +555,7 @@ const MeComponentObjectType: MeTypeComponent<MeObjectType<{ [key: string]: MeTyp
 }
 
 // # MeTypeType
-export class MeTypeType<Type extends MeTypeAny> extends MeType<Type, Type> {
+export class MeTypeType<Type extends MeTypeAny = MeTypeAny> extends MeType<Type, Type> {
     static readonly BASE_TYPE = new MeAnyType()
     constructor(metadata: Type) {
         super("type", () => new MeAnyType(), metadata);
@@ -562,10 +639,34 @@ const MeComponentTypeType: MeTypeComponent<MeTypeType<MeTypeAny>, { values: any[
 export type MeUnionTypeValueType<Types extends {name: string, type: MeTypeAny}[]> = Types[number]["type"]["_type"]
 export type MeUnionTypeMetadataType<Types extends {name: string, type: MeTypeAny}[]> = Types
 
-export class MeUnionType<Types extends {name: string, type: MeTypeAny}[]> extends MeType<MeUnionTypeValueType<Types>, MeUnionTypeMetadataType<Types>> {
+export class MeUnionType<Types extends {name: string, type: MeTypeAny}[]> extends MeType<MeUnionTypeValueType<Types>, MeUnionTypeMetadataType<Types>, any> {
     static readonly BASE_TYPE = new MeUnionType([])
     constructor(metadata: Types) {
-        super("union", () => new MeListType({valueType: new MeAnyType()}), metadata);
+        super(
+            "union",
+            () => new MeListType({valueType: new MeAnyType()}),
+            metadata, undefined,
+            {
+                // @ts-ignore
+                pathType: (value, metadata) => {
+                    for (let typeItem of metadata) {
+                        if (typeItem.type.doCheck(value)) {
+                            return typeItem.type.subLocator?.pathType(value, typeItem.type.metadata)
+                        }
+                    }
+                    return new MeVoidType();
+                },
+                // @ts-ignore
+                locator: (metadata, path, value) => {
+                    for (let typeItem of metadata) {
+                        if (typeItem.type.doCheck(value)) {
+                            return typeItem.type.subLocator?.locator(typeItem.type.metadata, path, value)
+                        }
+                    }
+                    throw new TargetNotExist(`指定值 ${value.toString()} 类型不匹配`);
+                },
+            }
+        );
     }
 
     check(meTypes: MeUnionTypeMetadataType<Types>, value: MeUnionTypeValueType<Types>): boolean {
@@ -670,8 +771,8 @@ const MeComponentUnionType: MeTypeComponent<MeUnionType<{name: string, type: MeT
 // # MeVoidType
 export class MeVoidType extends MeType<void> {
     static readonly BASE_TYPE = new MeVoidType()
-    constructor(metadata: void) {
-        super("void", () => new MeVoidType(), metadata);
+    constructor() {
+        super("void", () => new MeVoidType(), undefined);
     }
 
     check(metadata: void, value: void): boolean {
@@ -853,7 +954,7 @@ const types = [
 ]
 
 
-const MeComponentAnyType: MeTypeComponent<MeAnyType, { values: any[], tempVariables: any[] }, {type: MeTypeType<any>, value: any}>
+const MeComponentAnyType: MeTypeComponent<MeAnyType, { values: any[], tempVariables: any[] }, {type: MeTypeAny, value: any}>
     = ({
            context,
            value, tempVariable, setValue,
