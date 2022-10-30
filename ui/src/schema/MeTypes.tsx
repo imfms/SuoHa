@@ -1,12 +1,14 @@
 import {isNil, isNull, Primitive} from "./util";
-import {ComponentType, useMemo, useRef} from "react";
+import {ComponentType, useEffect, useMemo, useRef, useState} from "react";
 import {FormControl, IconButton, InputLabel, MenuItem, Select, Switch, TextField} from "@mui/material";
 import Grid2 from "@mui/material/Unstable_Grid2";
 import HighlightOffIcon from '@mui/icons-material/HighlightOff';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import DownloadIcon from '@mui/icons-material/Download';
 import {isEmpty} from "lodash";
+import FormatQuoteIcon from '@mui/icons-material/FormatQuote';
 import {TraceError} from "../util/TraceError";
+import {useDialog} from "../component/Dialog";
 
 // # MeType
 export type MeTypeAny = MeType<any, any, any>
@@ -26,8 +28,10 @@ type ValueGetter<Type, Metadata> = (metadata: Metadata, value: Type, context: Me
 
 class TargetNotExist extends TraceError {}
 
+type TypeSubLocator = (type: MeTypeAny["id"]) => MeTypeSubLocator<any, any, any> | undefined;
 type MeContext = {
     rootValue: () => MeTypeValue,
+    getTypeSubLocator: TypeSubLocator,
 }
 
 export abstract class MeType<Type, Metadata = void, SubLocatePath = void> {
@@ -65,7 +69,9 @@ export abstract class MeType<Type, Metadata = void, SubLocatePath = void> {
 }
 
 type MeTypeComponentGetter = (type: MeTypeAny["id"]) => MeTypeComponent<MeTypeAny, any>
-type MeTypeComponentContext = { getTypeComponent: MeTypeComponentGetter } & MeContext
+type MeTypeComponentContext = MeContext & {
+    getTypeComponent: MeTypeComponentGetter,
+}
 
 type MeTypeComponent<MeType extends MeTypeAny, TempVarType = void, ValueType = MeType["_type"]> = ComponentType<{
     metadata: MeType["metadata"],
@@ -75,7 +81,7 @@ type MeTypeComponent<MeType extends MeTypeAny, TempVarType = void, ValueType = M
 }>
 
 // # MeAnyType
-export class MeAnyType extends MeType<{type: MeTypeType, value: any}, void, any> {
+export class MeAnyType extends MeType<{type: MeTypeType, value: any}, void, null> {
     static readonly BASE_TYPE = new MeAnyType()
     constructor() {
         super(
@@ -84,13 +90,10 @@ export class MeAnyType extends MeType<{type: MeTypeType, value: any}, void, any>
             undefined, undefined,
             {
                 pathType: (value, metadata, context) => {
-                    // @ts-ignore
-                    return value.type.subLocator?.pathType(value.value, value.type.metadata);
+                    return new MeNullType()
                 },
-                // @ts-ignore
                 locator: (metadata, path, value) => {
-                    // @ts-ignore
-                    return value.type.subLocator?.locator(value.type.metadata, path, value.value);
+                    return value;
                 }
             }
         );
@@ -113,7 +116,12 @@ export class MeNullType extends MeType<null> {
     }
 }
 
-const MeComponentNullType: MeTypeComponent<MeNullType> = () => <></>
+const MeComponentNullType: MeTypeComponent<MeNullType> = ({value, setValue}) => {
+    useEffect(() => {
+        setTimeout(() => setValue(null))
+    }, [])
+    return <></>
+}
 
 // # MeBooleanType
 export class MeBooleanType extends MeType<boolean> {
@@ -548,7 +556,7 @@ const MeComponentObjectType: MeTypeComponent<MeObjectType<{ [key: string]: MeTyp
                 // @ts-ignore
                 .map(([key, propertyType]) => [key, context.getTypeComponent(propertyType.id)])
         ),
-        [metadata]
+        [JSON.stringify(metadata)]
     );
 
     return <Grid2 container direction={"column"}>
@@ -668,7 +676,7 @@ const MeComponentTypeType: MeTypeComponent<MeTypeType<MeTypeAny>, { values: any[
 export type MeUnionTypeValueType<Types extends {name: string, type: MeTypeAny}[]> = {index: number, value: Types[number]["type"]["_type"]}
 export type MeUnionTypeMetadataType<Types extends {name: string, type: MeTypeAny}[]> = Types
 
-export class MeUnionType<Types extends {name: string, type: MeTypeAny}[]> extends MeType<MeUnionTypeValueType<Types>, MeUnionTypeMetadataType<Types>, any> {
+export class MeUnionType<Types extends {name: string, type: MeTypeAny}[]> extends MeType<MeUnionTypeValueType<Types>, MeUnionTypeMetadataType<Types>, null> {
     static readonly BASE_TYPE = new MeUnionType([])
     constructor(metadata: Types) {
         super(
@@ -676,19 +684,17 @@ export class MeUnionType<Types extends {name: string, type: MeTypeAny}[]> extend
             () => new MeListType({valueType: new MeAnyType()}),
             metadata, undefined,
             {
-                // @ts-ignore
                 pathType: (value, metadata, context) => {
-                    if (isNil(value)) {
-                        return undefined
-                    }
-                    return metadata[value.index].type.subLocator?.pathType(value.value, metadata[value.index].type.metadata, context)
+                    return new MeNullType()
                 },
-                // @ts-ignore
                 locator: (metadata, path, value, context) => {
-                    if (isNil(value)) {
-                        throw new TargetNotExist(`指定值 ${value} 类型不匹配`);
+                    // if (isNil(value)) {
+                    //     throw new TargetNotExist(`指定值 ${value} 类型不匹配`);
+                    // }
+                    return {
+                        type: metadata[value.index].type,
+                        value: value.value,
                     }
-                    return metadata[value.index].type.subLocator?.locator(metadata[value.index].type.metadata, path, value.value, context)
                 },
             }
         );
@@ -744,7 +750,6 @@ const MeComponentUnionType: MeTypeComponent<MeUnionType<{name: string, type: MeT
                     fullWidth
                     labelId={"data-type"}
                     label={"数据类型"}
-                    defaultOpen
                     value={index}
                     onChange={event => {
                         const index = event.target.value as number
@@ -823,30 +828,28 @@ export class MeFunctionType<Input extends MeTypeAny, Output extends MeTypeAny
     }
 }
 
-export class MeRefType<RefType extends MeTypeAny = MeTypeAny> extends MeType<MeListType<MeTypeAny>["_type"], RefType, any> {
+export class MeRefType<RefType extends MeTypeAny = MeTypeAny> extends MeType<MeListType<MeTypeAny>["_type"], RefType, null> {
     static readonly BASE_TYPE = new MeRefType(new MeAnyType());
     constructor(metadata: RefType) {
         super(
             "ref", () => new MeTypeType(new MeAnyType()), metadata, undefined,
             {
                 pathType: (value, metadata, context) => {
-                    const rootValue = context.rootValue();
-                    const targetValue = MeRefType.findTargetValue(rootValue, value);
-                    return targetValue.type.subLocator?.pathType(targetValue.value, targetValue.type.metadata, context)
+                    return new MeNullType()
                 },
                 locator: (metadata, path, value, context) => {
                     const rootValue = context.rootValue();
-                    const targetValue = MeRefType.findTargetValue(rootValue, value);
-                    const locatorValue = targetValue.type.subLocator?.locator(targetValue.type.metadata, path, targetValue.value, context);
+                    const targetValue = MeRefType.findTargetValue(rootValue, value, context);
+                    const locatorValue = context.getTypeSubLocator(targetValue.type.id)?.locator(targetValue.type.metadata, path, targetValue.value, context);
                     if (locatorValue === undefined) {
-                        throw new TargetNotExist(`指定路径 ${path.toString()} 不存在`);
+                        throw new TargetNotExist(`指定路径 ${value} 不存在`);
                     }
                     return locatorValue
                 }
             },
             (metadata, value, context) => {
                 const rootValue = context.rootValue()
-                return MeRefType.findTargetValue(rootValue, value)
+                return MeRefType.findTargetValue(rootValue, value, context)
             }
         )
     }
@@ -857,13 +860,13 @@ export class MeRefType<RefType extends MeTypeAny = MeTypeAny> extends MeType<MeL
         return false;
     }
 
-    private static findTargetValue(rootValue: MeTypeValue, path: any[]) : MeTypeValue {
+    static findTargetValue(rootValue: MeTypeValue, path: any[], context: MeContext) : MeTypeValue {
         if (isEmpty(path)) {
             return rootValue;
         }
         return path.reduce(
             (rootValue, node) => {
-                return rootValue.type.subLocator?.locator(rootValue.metadata, node, rootValue.value)
+                return context.getTypeSubLocator(rootValue.type.id)?.locator(rootValue.type.metadata, node, rootValue.value, context)
             },
             rootValue
         )
@@ -919,9 +922,9 @@ function parseRefPath(path: any[], rootValue: MeTypeValue, context: MeContext) :
             if (parentValue === undefined) {
                 return result
             }
-            const subPathType = parentValue.type.subLocator?.pathType(parentValue.value, parentValue.type.metadata, context) ?? new MeVoidType()
+            const subPathType = context.getTypeSubLocator(parentValue.type.id)?.pathType(parentValue.value, parentValue.type.metadata, context) ?? new MeVoidType()
             try {
-                const subValue = parentValue.type.subLocator?.locator(parentValue.type.metadata, node, parentValue.value, context)
+                const subValue = context.getTypeSubLocator(parentValue.type.id)?.locator(parentValue.type.metadata, node, parentValue.value, context)
                 parentValue = subValue
             } catch (e) {
                 parentValue = undefined
@@ -936,7 +939,7 @@ function parseRefPath(path: any[], rootValue: MeTypeValue, context: MeContext) :
     );
 
     if (!isNil(parentValue)) {
-        const appendNode = parentValue.type.subLocator?.pathType(parentValue.value, parentValue.type.metadata, context);
+        const appendNode = context.getTypeSubLocator(parentValue.type.id)?.pathType(parentValue.value, parentValue.type.metadata, context);
         if (appendNode !== undefined) {
             nodes.push({
                 type: appendNode,
@@ -1076,7 +1079,6 @@ const MeComponentImageType: MeTypeComponent<MeImageType, File | null> = ({contex
 
 const types = [
     {name: "类型定义", type: new MeTypeType(new MeAnyType())},
-    {name: "引用类型", type: new MeRefType(new MeAnyType())},
     {name: "文本", type: new MeStringType()},
     {name: "People", type: new MeObjectType({
             name: new MeStringType(),
@@ -1125,10 +1127,210 @@ const MeComponentAnyType: MeTypeComponent<MeAnyType, { values: any[], tempVariab
     />
 }
 
+export class MeRefValueType<Type extends MeTypeAny = MeTypeAny> extends MeType<MeRefTypeValue<Type>, void, null> {
+    static readonly BASE_TYPE = new MeRefValueType()
+    constructor() {
+        super(
+            "refValue",
+            () => new MeVoidType(),
+            undefined, undefined,
+            {
+                pathType: (value, metadata, context) => {
+                    return new MeNullType()
+                },
+                locator: (metadata, path, value, context) => {
+                    // @ts-ignore
+                    const meType: MeTypeAny = value.type.mode === "value" ? value.type.value
+                        : MeRefType.findTargetValue(context.rootValue(), value.type.value.value, context);
+                    const meValue = value.value.mode === "value" ? value.value.value
+                        : MeRefType.findTargetValue(context.rootValue(), value.value.value.value, context);
+                    return {
+                        type: meType,
+                        value: meValue,
+                    }
+                }
+            }
+        );
+    }
+
+    check(metadata: void, value: any): boolean {
+        return true;
+    }
+
+}
+
+const MeComponentRefValueType: MeTypeComponent<MeRefValueType, any>
+    = ({
+           context,
+           value, tempVariable, setValue,
+       }) => {
+
+    const value2 = value ?? {
+        type: {
+            mode: "value",
+            // @ts-ignore
+            value: {
+                id: "string",
+            }
+        },
+        value: {
+            mode: "value",
+            value: null,
+        }
+    }
+
+    let typeComponentGetter : MeTypeComponentGetter = useMemo(() => (id) => {
+        return ({metadata, value, tempVariable, setValue}) => {
+            return <MeComponentRefValueType
+                context={context}
+                metadata={undefined}
+                value={value ?? {
+                    type: {
+                        mode: "value",
+                        value: {
+                            id: id,
+                            metadata: metadata,
+                        }
+                    },
+                    value: {
+                        mode: "value",
+                        value: null,
+                    }
+                }}
+                tempVariable={tempVariable}
+                setValue={setValue}
+            />
+        }
+    }, [context]);
+    let typeSubLocator : TypeSubLocator = type => {
+        console.log("type", type)
+        const realSubLocator = context.getTypeSubLocator(type);
+        if (realSubLocator === undefined) return undefined;
+        return {
+            pathType: (value, metadata, context) => {
+                const realPathType = realSubLocator.pathType(value, metadata, context);
+                console.log("realPathType", realPathType)
+                return realPathType
+            },
+            locator: (metadata, path, value, context) => {
+                const realValue = realSubLocator.locator(metadata, path, value, context);
+                console.log("path", path, "realValue", realValue)
+                if (type === "refValue") {
+                    return realValue
+                }
+                if (realValue === undefined) {
+                    return realValue
+                }
+                console.log("path", path, "finalValue", {
+                    type: new MeRefValueType(),
+                    value: realValue.value,
+                })
+                return {
+                    type: new MeRefValueType(),
+                    value: realValue.value,
+                }
+            },
+        }
+    }
+
+    // @ts-ignore
+    const meType : MeTypeAny = value2.type.mode === "value" ? value2.type.value
+        : MeRefType.findTargetValue(context.rootValue(), value2.type.value.value, {...context, getTypeSubLocator: typeSubLocator}).type;
+    const meValue = value2.value.mode === "value" ? value2.value.value
+        : MeRefType.findTargetValue(context.rootValue(), value2.value.value.value, {...context, getTypeSubLocator: typeSubLocator}).value;
+
+    const dialog = useDialog();
+
+    const MeComponent = useMemo(() => context.getTypeComponent(meType.id), [meType.id]);
+
+    return <Grid2 container direction={"row"}>
+        <Grid2>
+            <IconButton size={"small"} color={value2.value.mode === "ref" ? "primary" : "default"} onClick={() => {
+                function showRefSelectDialog() {
+                    let finalValue : any[] | undefined = undefined;
+                    const RefComponent = () => {
+                        const [value, setValue] = useState([] as any[] | null);
+                        // @ts-ignore
+                        finalValue = value;
+                        const tempVariable = useRef(undefined);
+                        return <MeComponentRefType
+                            context={{
+                                ...context,
+                                getTypeSubLocator: typeSubLocator,
+                            }}
+                            metadata={meType}
+                            value={value}
+                            tempVariable={tempVariable.current}
+                            setValue={(meValue, meTempVariable) => {
+                                tempVariable.current = meTempVariable
+                                setValue(meValue)
+                            }}
+                        />
+                    };
+                    dialog.show({
+                        title: "选择引用目标",
+                        content: <RefComponent/>,
+                        actions: [
+                            {text: "取消"},
+                            {
+                                text: "确认",
+                                action: () => {
+                                    setValue({
+                                        // @ts-ignore
+                                        type: value2.type,
+                                        value: {
+                                            mode: "ref",
+                                            value: {
+                                                // @ts-ignore
+                                                type: {id: "ref"},
+                                                // @ts-ignore
+                                                value: finalValue,
+                                            }
+                                        }
+                                    }, tempVariable)
+                                }
+                            }
+                        ]
+                    })
+                }
+
+                showRefSelectDialog();
+            }}>
+                <FormatQuoteIcon fontSize={"small"} sx={{fontSize: "1rem"}}/>
+            </IconButton>
+        </Grid2>
+        <Grid2>
+            <MeComponent
+                context={{
+                    rootValue: context.rootValue,
+                    getTypeComponent: typeComponentGetter,
+                    getTypeSubLocator: typeSubLocator,
+                }}
+                metadata={meType.metadata}
+                value={meValue}
+                tempVariable={tempVariable}
+                setValue={(value, tempVariable) => {
+                    setValue(
+                        {
+                            // @ts-ignore
+                            type: value2.type,
+                            value: {
+                                mode: "value",
+                                value: value,
+                            }
+                        },
+                        tempVariable
+                    )
+                }}
+            />
+        </Grid2>
+    </Grid2>
+}
 const typeIdAndComponent = {
     type: MeComponentTypeType,
     ref: MeComponentRefType,
     void: MeComponentVoidType,
+    null: MeComponentNullType,
     boolean: MeComponentBooleanType,
     number: MeComponentNumberType,
     string: MeComponentStringType,
@@ -1142,25 +1344,63 @@ const typeIdAndComponent = {
     any: MeComponentAnyType,
 }
 
+const idAndTypes: { [id: MeTypeAny["id"]]: MeType<any> } = [
+    MeAnyType.BASE_TYPE,
+    MeNullType.BASE_TYPE,
+    MeBooleanType.BASE_TYPE,
+    MeNumberType.BASE_TYPE,
+    MeStringType.BASE_TYPE,
+    MeLiteralType.BASE_TYPE,
+    MeListType.BASE_TYPE,
+    MeOptionalType.BASE_TYPE,
+    MeRecordType.BASE_TYPE,
+    MeObjectType.BASE_TYPE,
+    MeTypeType.BASE_TYPE,
+    MeUnionType.BASE_TYPE,
+    MeVoidType.BASE_TYPE,
+    MeFunctionType.BASE_TYPE,
+    MeRefType.BASE_TYPE,
+    MeFileType.BASE_TYPE,
+    MeImageType.BASE_TYPE,
+    MeRefValueType.BASE_TYPE,
+].reduce((previousValue, currentValue) => {
+        previousValue[currentValue.id] = currentValue;
+        return previousValue
+    },
+    {} as { [id: MeTypeAny["id"]]: MeTypeAny }
+)
+
 export const PublicMeAnyTypeComponent = ({value, onChange} : {value: any, onChange: (value: any) => void}) => {
 
     const tempVarRef = useRef({});
+    const valueRef = useRef(value);
 
-    return <MeComponentRecordType
-        context={{
-            getTypeComponent: type => {
-                // @ts-ignore
-                return typeIdAndComponent[type] ?? (() => {
-                    return <>暂不支持的类型: {type}</>
-                })
-            },
-            rootValue: () => ({
-                type: new MeRecordType({valueType: new MeAnyType()}),
-                value: value,
-            }),
-        }}
-        metadata={{valueType: new MeAnyType()}}
-        value={value}
+    const value2 = value ?? {
+        type: {
+            mode: "value",
+            // @ts-ignore
+            value: new MeRecordType({valueType: new MeAnyType()}),
+        },
+        value: {
+            mode: "value",
+            // @ts-ignore
+            value: null,
+        }
+    }
+    valueRef.current = value2;
+
+    let context = useMemo<MeTypeComponentContext>(() => ({
+        getTypeComponent: meTypeComponentGetter,
+        rootValue: () => ({
+            type: new MeRefValueType(),
+            value: valueRef.current,
+        }),
+        getTypeSubLocator: id => idAndTypes[id]?.subLocator,
+    }), []);
+    // @ts-ignore
+    return <MeComponentRefValueType
+        context={context}
+        value={value2}
         tempVariable={tempVarRef.current}
         setValue={(value: any, tempVar: any) => {
             tempVarRef.current = tempVar
@@ -1174,14 +1414,26 @@ type MeTypeValue<MeType extends MeTypeAny = MeTypeAny> = {
     value: MeType["_type"],
 }
 
-type RefValueType = {
-    // type: ValueType<Function>,
+type RefValueType<MeType extends MeTypeAny = MeTypeAny> = {
+    mode: "value",
+    value: MeType,
+} | {
+    mode: "ref",
+    value: MeTypeValue<MeRefType<MeType>>,
 }
 
-type ValueType2 = {
-    type: {
-        id: string,
-        metadata: any,
-    },
-    value: any,
+type MeRefTypeValue<MeType extends MeTypeAny = MeTypeAny> = {
+    type: RefValueType<MeTypeType<MeType>>,
+    value: RefValueType<MeType>,
 }
+
+const meTypeComponentGetter : MeTypeComponentGetter = type => {
+    // @ts-ignore
+    const Component = typeIdAndComponent[type] ?? (() => {
+        return <>暂不支持的类型: {type}</>
+    })
+    return (props) => {
+        return <Component {...props} />
+    }
+}
+
