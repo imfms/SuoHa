@@ -362,6 +362,7 @@ export class MeRecordType<ValueType extends MeTypeAny> extends MeType<MeRecordTy
             undefined,
             {
                 pathType: value => new MeUnionType(
+                    // @ts-ignore
                     Object.entries(value)
                         .map(([key]) => ({name: key, type: new MeLiteralType(key)}))
                 ),
@@ -498,7 +499,9 @@ export class MeObjectType<Shape extends ObjectShape> extends MeType<baseObjectTy
                 // @ts-ignore
                 pathType: value => (
                     new MeUnionType(
+                        // @ts-ignore
                         Object.entries(value)
+                            // @ts-ignore
                             .map(([key]) => ({name: key, type: new MeLiteralType(key)}))
                     )
                 ),
@@ -542,6 +545,7 @@ const MeComponentObjectType: MeTypeComponent<MeObjectType<{ [key: string]: MeTyp
     const ObjectComponent = useMemo(
         () => Object.fromEntries(
             Object.entries(metadata)
+                // @ts-ignore
                 .map(([key, propertyType]) => [key, context.getTypeComponent(propertyType.id)])
         ),
         [metadata]
@@ -557,6 +561,7 @@ const MeComponentObjectType: MeTypeComponent<MeObjectType<{ [key: string]: MeTyp
                 <Grid2 xs>
                     <ItemComponent
                         context={context}
+                        // @ts-ignore
                         metadata={valueType.metadata}
                         value={objectValue?.[valueKey] ?? null}
                         tempVariable={objectTempVariable?.[valueKey] ?? undefined}
@@ -899,7 +904,7 @@ const MeComponentRefType: MeTypeComponent<MeRefType, any>
         tempVariable={tempVariables}
         setValue={(objectValue, tempVariable) => {
             const refValue = Object.entries(objectValue as any)
-                .sort(([index1], [index2]) => parseInt(index1) - parseInt(index2))
+                .sort(([index1], [index2]) => parseInt(index1 as string) - parseInt(index2 as string))
                 .map(([index, value]) => value);
             setValue(refValue, tempVariable)
         }}
