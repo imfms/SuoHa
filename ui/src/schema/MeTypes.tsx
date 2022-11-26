@@ -366,7 +366,7 @@ export class MeRecordType<ValueType extends MeTypeAny> extends MeType<MeRecordTy
     constructor(metadata: MeRecordTypeMetadataType<ValueType>) {
         super(
             "record",
-            () => new MeObjectType({valueType: new MeAnyType()}),
+            () => new MeObjectType({valueType: new MeTypeType(new MeAnyType())}),
             metadata,
             undefined,
             {
@@ -594,7 +594,7 @@ const MeComponentObjectType: MeTypeComponent<MeObjectType<{ [key: string]: MeTyp
 
 // # MeTypeType
 export class MeTypeType<Type extends MeTypeAny = MeTypeAny> extends MeType<Type, Type> {
-    static readonly BASE_TYPE = new MeAnyType()
+    static readonly BASE_TYPE = new MeTypeType(new MeAnyType())
     constructor(metadata: Type) {
         super("type", () => new MeAnyType(), metadata);
     }
@@ -1463,6 +1463,10 @@ const meTypeComponentGetter : MeTypeComponentGetter = type => {
 
 const typeNames = [
     {
+        name: "不限",
+        type: MeAnyType.BASE_TYPE,
+    },
+    {
         name: "文本",
         type: MeStringType.BASE_TYPE,
     },
@@ -1475,8 +1479,12 @@ const typeNames = [
         type: MeBooleanType.BASE_TYPE,
     },
     {
-        name: "对象",
+        name: "表单",
         type: MeObjectType.BASE_TYPE,
+    },
+    {
+        name: "自由表单",
+        type: MeRecordType.BASE_TYPE,
     },
     {
         name: "列表",
@@ -1490,5 +1498,9 @@ const typeNames = [
         name: "图像",
         type: MeImageType.BASE_TYPE,
     },
+    {
+        name: "类型定义",
+        type: MeTypeType.BASE_TYPE,
+    }
 ]
 
