@@ -1,6 +1,6 @@
 import {isNil, isNull, Primitive} from "./util";
 import {ComponentType, useEffect, useMemo, useRef, useState} from "react";
-import {FormControl, IconButton, InputLabel, MenuItem, Select, Switch, TextField} from "@mui/material";
+import {Button, FormControl, IconButton, InputLabel, MenuItem, Select, Switch, TextField} from "@mui/material";
 import Grid2 from "@mui/material/Unstable_Grid2";
 import HighlightOffIcon from '@mui/icons-material/HighlightOff';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
@@ -70,6 +70,7 @@ export abstract class MeType<Type, Metadata = void, SubLocatePath = void> {
 
 type MeTypeComponentGetter = (type: MeTypeAny["id"]) => MeTypeComponent<MeTypeAny, any>
 type MeTypeComponentContext = MeContext & {
+    originContext: () => MeTypeComponentContext,
     getTypeComponent: MeTypeComponentGetter,
 }
 
@@ -81,7 +82,7 @@ type MeTypeComponent<MeType extends MeTypeAny, TempVarType = void, ValueType = M
 }>
 
 // # MeAnyType
-export class MeAnyType extends MeType<{type: MeTypeType, value: any}, void, null> {
+export class MeAnyType extends MeType<{type: MeTypeAny, value: any}, void, null> {
     static readonly BASE_TYPE = new MeAnyType()
     constructor() {
         super(
@@ -610,44 +611,13 @@ const MeComponentTypeType: MeTypeComponent<MeTypeType<MeTypeAny>, { values: any[
            value, tempVariable, setValue,
        }) => {
 
-    const types = [
-        {
-            name: "文本",
-            type: MeStringType.BASE_TYPE,
-        },
-        {
-            name: "数值",
-            type: MeNumberType.BASE_TYPE,
-        },
-        {
-            name: "开关",
-            type: MeBooleanType.BASE_TYPE,
-        },
-        {
-            name: "对象",
-            type: MeObjectType.BASE_TYPE,
-        },
-        {
-            name: "列表",
-            type: MeListType.BASE_TYPE,
-        },
-        {
-            name: "文件",
-            type: MeFileType.BASE_TYPE,
-        },
-        {
-            name: "图像",
-            type: MeImageType.BASE_TYPE,
-        },
-    ]
-
-    const typeMetadatas = types.map(type => ({
+    const typeMetadatas = typeNames.map(type => ({
         name: type.name,
         type: type.type.metaDataType(),
     }));
 
     let value1 = (value === null || value === undefined) ? null : {
-        index: types.findIndex(type => type.type.id === value.id),
+        index: typeNames.findIndex(type => type.type.id === value.id),
         value: value.metadata
     };
     return <MeComponentUnionType
@@ -662,7 +632,7 @@ const MeComponentTypeType: MeTypeComponent<MeTypeType<MeTypeAny>, { values: any[
                 setValue(
                     // @ts-ignore
                     {
-                        id: types[index].type.id,
+                        id: typeNames[index].type.id,
                         metadata: metadata,
                     },
                     newTempVariable
@@ -1077,54 +1047,102 @@ const MeComponentImageType: MeTypeComponent<MeImageType, File | null> = ({contex
     </Grid2>
 }
 
-const types = [
-    {name: "类型定义", type: new MeTypeType(new MeAnyType())},
-    {name: "文本", type: new MeStringType()},
-    {name: "People", type: new MeObjectType({
-            name: new MeStringType(),
-            age: new MeNumberType(),
-            gender: new MeBooleanType(),
-            friends: new MeListType({
-                valueType: new MeObjectType({
-                    name: new MeStringType(),
-                    age: new MeNumberType(),
-                    gender: new MeBooleanType(),
-                })
-            })
-        })},
-    {name: "数值", type: new MeNumberType()},
-    {name: "开关", type: new MeBooleanType()},
-    {name: "键值对", type: new MeRecordType({valueType: new MeAnyType()})},
-    {name: "对象", type: new MeObjectType({
-        name: new MeStringType(), // TODO
-        man: new MeBooleanType(),
-        age: new MeNumberType(),
-    })},
-    {name: "列表", type: new MeListType({
-        valueType: new MeStringType(), // TODO
-    })},
-    {name: "文件", type: new MeFileType({type: "*"})},
-    {name: "图像", type: new MeImageType()},
-]
-
-
-const MeComponentAnyType: MeTypeComponent<MeAnyType, { values: any[], tempVariables: any[] }, {type: MeTypeAny, value: any}>
+const MeComponentAnyType: MeTypeComponent<MeAnyType, { values: {[id: MeTypeAny["id"]]: any}, tempVariables: {[id: MeTypeAny["id"]]: any} }>
     = ({
            context,
-           value, tempVariable, setValue,
+           value,
+           tempVariable = {
+               values: {},
+               tempVariables: {}
+           },
+           setValue,
        }) => {
-    return <MeComponentUnionType
-        context={context} metadata={types}
-        value={isNull(value) ? null : {index: types.findIndex(type => type.type == value.type), value: value.value}}
-            tempVariable={tempVariable}
-        setValue={(value, tempVariable) => {
-            if (isNull(value)) {
-                setValue(null, tempVariable);
-            } else {
-                setValue({type: types[value.index].type, value: value.value}, tempVariable)
-            }
-        }}
-    />
+
+    const dialog = useDialog();
+
+    const Component = useMemo(() => isNil(value) ? () => <></>
+            : context.getTypeComponent(value!.type.id),
+        [value?.type]
+    )
+
+    console.log("value", value)
+
+    const typeName = isNil(value)
+        ? "选择类型"
+        : "类型:" + typeNames.find(type => type.type.id === value!.type.id)?.name
+
+    return <Grid2 container>
+        <Grid2>
+            <Button size={"medium"} variant={"outlined"} color={"inherit"} onClick={() => {
+                function showTypeMakeDialog() {
+                    let finalType : MeTypeAny;
+                    const RefComponent = () => {
+                        const [typeValue, setTypeValue] = useState(value?.type ?? new MeStringType());
+                        finalType = typeValue;
+                        const tempVariable = useRef(undefined as any);
+                        return <MeComponentTypeType
+                            context={context.originContext()}
+                            metadata={MeAnyType.BASE_TYPE}
+                            value={typeValue}
+                            tempVariable={tempVariable.current}
+                            setValue={(meValue, meTempVariable) => {
+                                tempVariable.current = meTempVariable
+                                setTypeValue(meValue as any)
+                            }}
+                        />
+                    };
+                    dialog.show({
+                        title: "创建数据类型",
+                        content: <RefComponent/>,
+                        actions: [
+                            {text: "取消"},
+                            {
+                                text: "确认",
+                                action: () => {
+                                    setValue(
+                                        {
+                                            type: finalType!,
+                                            value: tempVariable.values[finalType!.id],
+                                        },
+                                        tempVariable
+                                    )
+                                }
+                            }
+                        ]
+                    })
+                }
+
+                showTypeMakeDialog();
+            }}>
+                {typeName}
+            </Button>
+        </Grid2>
+        <Grid2 flexGrow={1}>
+            <Component
+                context={context} metadata={value?.type.metadata}
+                value={value?.value ?? null}
+                tempVariable={tempVariable.tempVariables[value?.type.id!]}
+                setValue={(compValue, compTempVariable) => {
+                    setValue(
+                        {
+                            type: value!.type,
+                            value: compValue,
+                        },
+                        {
+                            values: {
+                                ...tempVariable.values,
+                                [value!.type.id]: compValue,
+                            },
+                            tempVariables: {
+                                ...tempVariable.tempVariables,
+                                [value!.type.id]: compTempVariable,
+                            }
+                        }
+                    )
+                }}
+            />
+        </Grid2>
+    </Grid2>
 }
 
 export class MeRefValueType<Type extends MeTypeAny = MeTypeAny> extends MeType<MeRefTypeValue<Type>, void, null> {
@@ -1302,9 +1320,9 @@ const MeComponentRefValueType: MeTypeComponent<MeRefValueType, any>
         <Grid2>
             <MeComponent
                 context={{
-                    rootValue: context.rootValue,
-                    getTypeComponent: typeComponentGetter,
+                    ...context,
                     getTypeSubLocator: typeSubLocator,
+                    getTypeComponent: typeComponentGetter,
                 }}
                 metadata={meType.metadata}
                 value={meValue}
@@ -1389,14 +1407,20 @@ export const PublicMeAnyTypeComponent = ({value, onChange} : {value: any, onChan
     }
     valueRef.current = value2;
 
-    let context = useMemo<MeTypeComponentContext>(() => ({
-        getTypeComponent: meTypeComponentGetter,
-        rootValue: () => ({
-            type: new MeRefValueType(),
-            value: valueRef.current,
-        }),
-        getTypeSubLocator: id => idAndTypes[id]?.subLocator,
-    }), []);
+    const context = useMemo<MeTypeComponentContext>(() => {
+            const context : MeTypeComponentContext = {
+                originContext: () => context,
+                rootValue: () => ({
+                    type: new MeRefValueType(),
+                    value: valueRef.current,
+                }),
+                getTypeSubLocator: (id: MeTypeAny["id"]) => idAndTypes[id]?.subLocator,
+                getTypeComponent: meTypeComponentGetter,
+            };
+            return context
+        },
+        []
+    );
     // @ts-ignore
     return <MeComponentRefValueType
         context={context}
@@ -1436,4 +1460,35 @@ const meTypeComponentGetter : MeTypeComponentGetter = type => {
         return <Component {...props} />
     }
 }
+
+const typeNames = [
+    {
+        name: "文本",
+        type: MeStringType.BASE_TYPE,
+    },
+    {
+        name: "数值",
+        type: MeNumberType.BASE_TYPE,
+    },
+    {
+        name: "开关",
+        type: MeBooleanType.BASE_TYPE,
+    },
+    {
+        name: "对象",
+        type: MeObjectType.BASE_TYPE,
+    },
+    {
+        name: "列表",
+        type: MeListType.BASE_TYPE,
+    },
+    {
+        name: "文件",
+        type: MeFileType.BASE_TYPE,
+    },
+    {
+        name: "图像",
+        type: MeImageType.BASE_TYPE,
+    },
+]
 
