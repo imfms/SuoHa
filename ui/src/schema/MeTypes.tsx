@@ -1180,7 +1180,11 @@ export class MeRefValueType<Type extends MeTypeAny = MeTypeAny> extends MeType<M
 const MeComponentRefValueType: MeTypeComponent<MeRefValueType, any>
     = ({
            context,
-           value, tempVariable, setValue,
+           value,
+           tempVariable,
+           setValue,
+           // @ts-ignore
+           root,
        }) => {
 
     const value2 = value ?? {
@@ -1262,61 +1266,63 @@ const MeComponentRefValueType: MeTypeComponent<MeRefValueType, any>
     const MeComponent = useMemo(() => context.getTypeComponent(meType.id), [meType.id]);
 
     return <Grid2 container direction={"row"}>
-        <Grid2>
-            <IconButton size={"small"} color={value2.value.mode === "ref" ? "primary" : "default"} onClick={() => {
-                function showRefSelectDialog() {
-                    let finalValue : any[] | undefined = undefined;
-                    const RefComponent = () => {
-                        const [value, setValue] = useState([] as any[] | null);
-                        // @ts-ignore
-                        finalValue = value;
-                        const tempVariable = useRef(undefined);
-                        return <MeComponentRefType
-                            context={{
-                                ...context,
-                                getTypeSubLocator: typeSubLocator,
-                            }}
-                            metadata={meType}
-                            value={value}
-                            tempVariable={tempVariable.current}
-                            setValue={(meValue, meTempVariable) => {
-                                tempVariable.current = meTempVariable
-                                setValue(meValue)
-                            }}
-                        />
-                    };
-                    dialog.show({
-                        title: "选择引用目标",
-                        content: <RefComponent/>,
-                        actions: [
-                            {text: "取消"},
-                            {
-                                text: "确认",
-                                action: () => {
-                                    setValue({
-                                        // @ts-ignore
-                                        type: value2.type,
-                                        value: {
-                                            mode: "ref",
+        {
+            root !== true && <Grid2>
+                <IconButton size={"small"} color={value2.value.mode === "ref" ? "primary" : "default"} onClick={() => {
+                    function showRefSelectDialog() {
+                        let finalValue: any[] | undefined = undefined;
+                        const RefComponent = () => {
+                            const [value, setValue] = useState([] as any[] | null);
+                            // @ts-ignore
+                            finalValue = value;
+                            const tempVariable = useRef(undefined);
+                            return <MeComponentRefType
+                                context={{
+                                    ...context,
+                                    getTypeSubLocator: typeSubLocator,
+                                }}
+                                metadata={meType}
+                                value={value}
+                                tempVariable={tempVariable.current}
+                                setValue={(meValue, meTempVariable) => {
+                                    tempVariable.current = meTempVariable
+                                    setValue(meValue)
+                                }}
+                            />
+                        };
+                        dialog.show({
+                            title: "选择引用目标",
+                            content: <RefComponent/>,
+                            actions: [
+                                {text: "取消"},
+                                {
+                                    text: "确认",
+                                    action: () => {
+                                        setValue({
+                                            // @ts-ignore
+                                            type: value2.type,
                                             value: {
-                                                // @ts-ignore
-                                                type: {id: "ref"},
-                                                // @ts-ignore
-                                                value: finalValue,
+                                                mode: "ref",
+                                                value: {
+                                                    // @ts-ignore
+                                                    type: {id: "ref"},
+                                                    // @ts-ignore
+                                                    value: finalValue,
+                                                }
                                             }
-                                        }
-                                    }, tempVariable)
+                                        }, tempVariable)
+                                    }
                                 }
-                            }
-                        ]
-                    })
-                }
+                            ]
+                        })
+                    }
 
-                showRefSelectDialog();
-            }}>
-                <FormatQuoteIcon fontSize={"small"} sx={{fontSize: "1rem"}}/>
-            </IconButton>
-        </Grid2>
+                    showRefSelectDialog();
+                }}>
+                    <FormatQuoteIcon fontSize={"small"} sx={{fontSize: "1rem"}}/>
+                </IconButton>
+            </Grid2>
+        }
         <Grid2>
             <MeComponent
                 context={{
@@ -1411,8 +1417,8 @@ export const PublicMeAnyTypeComponent = ({value, onChange} : {value: any, onChan
             const context : MeTypeComponentContext = {
                 originContext: () => context,
                 rootValue: () => ({
-                    type: new MeRefValueType(),
-                    value: valueRef.current,
+                    type: new MeRecordType({valueType: new MeAnyType()}),
+                    value: valueRef.current.value.value,
                 }),
                 getTypeSubLocator: (id: MeTypeAny["id"]) => idAndTypes[id]?.subLocator,
                 getTypeComponent: meTypeComponentGetter,
@@ -1423,6 +1429,8 @@ export const PublicMeAnyTypeComponent = ({value, onChange} : {value: any, onChan
     );
     // @ts-ignore
     return <MeComponentRefValueType
+        // @ts-ignore
+        root={true}
         context={context}
         value={value2}
         tempVariable={tempVarRef.current}
